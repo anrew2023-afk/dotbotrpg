@@ -199,7 +199,26 @@ def remove_premium(user_id):
 def check_access(user_id):
     return user_id == CREATOR_ID or is_trusted(user_id)
 
-# ===== ИНЛАЙН-РЕЖИМ (НЕ МЕНЯЕМ) =====
+# ===== ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ =====
+async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик любых текстовых сообщений"""
+    user_id = update.effective_user.id
+    if not check_access(user_id):
+        return
+    
+    # Проверяем, есть ли активный процесс
+    if context.user_data.get('creating_action'):
+        await create_action_input(update, context)
+    elif context.user_data.get('changing_name'):
+        await handle_name_input(update, context)
+    elif context.user_data.get('adding_user'):
+        await add_user_input(update, context)
+    elif context.user_data.get('giving_premium'):
+        await give_premium_input(update, context)
+    elif context.user_data.get('removing_premium'):
+        await remove_premium_input(update, context)
+
+# ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
@@ -423,7 +442,7 @@ async def show_main_menu_from_query(query):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# ===== НАСТРОЙКИ (КРАСИВЫЕ) =====
+# ===== НАСТРОЙКИ =====
 async def settings_menu(query):
     user_id = query.from_user.id
     if not check_access(user_id):
@@ -564,25 +583,29 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="settings")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== ВСЕ ДЕЙСТВИЯ =====
+# ===== ВСЕ ДЕЙСТВИЯ (ПОЛНЫЙ СПИСОК) =====
 async def all_actions_menu(query):
     user_id = query.from_user.id
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
+    
     text = f"📋 <b>Доступные действия</b>\n────────────────\n\n"
     text += f"🔹 <b>Встроенные (20 шт.):</b>\n"
-    for i, action in enumerate(list(DEFAULT_ACTIONS.keys())[:10], 1):
-        text += f"{i}. {action.capitalize()}\n"
-    text += f"... и ещё {len(DEFAULT_ACTIONS) - 10}\n\n"
+    
+    # Полный список всех действий
+    action_list = list(DEFAULT_ACTIONS.keys())
+    for i, action in enumerate(action_list, 1):
+        emoji = DEFAULT_ACTIONS[action]['emoji']
+        text += f"{i}. {action.capitalize()} {emoji}\n"
     
     custom = get_custom_actions()
     if custom:
-        text += f"🔸 <b>Кастомные ({len(custom)} шт.):</b>\n"
+        text += f"\n🔸 <b>Кастомные ({len(custom)} шт.):</b>\n"
         for c in custom:
             text += f"• {c[1].capitalize()}\n"
     else:
-        text += "🔸 Кастомных действий пока нет.\n"
+        text += f"\n🔸 Кастомных действий пока нет.\n"
     
     text += f"\n📌 <b>Как использовать:</b>\n"
     text += f"В любом чате напишите:\n"
@@ -1146,7 +1169,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "remove_premium":
         await remove_premium_start(update, context)
 
-# ===== HELP =====
+# ===== HELP (ПОЛНЫЙ СПИСОК) =====
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
@@ -1169,11 +1192,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"/removepremium — Забрать премиум\n"
         text += f"/premiumlist — Список премиум"
     
-    text += f"\n\n📌 <b>Инлайн-режим (в чатах):</b>\n"
-    text += f"Обнять @username\n\n"
-    text += f"<b>Примеры:</b>\n"
-    text += f"Обнять @petya\n"
-    text += f"Поцеловать @masha"
+    text += f"\n\n📌 <b>Встроенные действия (20 шт.):</b>\n"
+    
+    # Полный список всех действий
+    action_list = list(DEFAULT_ACTIONS.keys())
+    for i, action in enumerate(action_list, 1):
+        emoji = DEFAULT_ACTIONS[action]['emoji']
+        text += f"{i}. {action.capitalize()} {emoji}\n"
+    
+    text += f"\n📌 <b>Как использовать:</b>\n"
+    text += f"В любом чате: <code>Обнять @username</code>\n"
+    text += f"Пример: <code>Обнять @petya</code>"
     
     await update.message.reply_text(text, parse_mode="HTML")
 
@@ -1199,18 +1228,20 @@ async def main():
     builder = builder.connect_timeout(60).read_timeout(60).write_timeout(60)
     app = builder.build()
     
+    # Команды
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
+    
+    # Кнопки
     app.add_handler(CallbackQueryHandler(button_handler))
+    
+    # Инлайн
     app.add_handler(InlineQueryHandler(inline_query))
     
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_name_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, create_action_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, add_user_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, give_premium_input))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, remove_premium_input))
+    # Обработчики текстовых сообщений
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     
     print("=" * 50)
     print("🌸 DotBotRPG запущен!")
