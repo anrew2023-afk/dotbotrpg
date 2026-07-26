@@ -208,7 +208,7 @@ async def get_user_name(user_id):
         return user[1]
     return str(user_id)
 
-# ===== ИНЛАЙН-РЕЖИМ (ИСПРАВЛЕН) =====
+# ===== ИНЛАЙН-РЕЖИМ (ИСПРАВЛЕН — ТЕПЕРЬ ИМЯ) =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
@@ -288,13 +288,18 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_gender = user[2] if user else 'male'
     sender_name = user[3] if user and user[3] else user[1] if user else update.effective_user.first_name
     
-    # ===== ПОЛУЧАЕМ НАСТОЯЩЕЕ ИМЯ ЦЕЛИ =====
+    # ===== ПОЛУЧАЕМ НАСТОЯЩЕЕ ИМЯ ЦЕЛИ (НЕ USERNAME!) =====
     target_name = target_input
     try:
         target_user = await context.bot.get_chat(f"@{target_input}")
-        if target_user and target_user.first_name:
-            target_name = target_user.first_name
-    except:
+        if target_user:
+            if target_user.first_name:
+                target_name = target_user.first_name
+                if target_user.last_name:
+                    target_name += " " + target_user.last_name
+            elif target_user.title:
+                target_name = target_user.title
+    except Exception as e:
         target_name = target_input
     
     # Проверяем встроенные действия
@@ -355,7 +360,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif context.user_data.get('removing_premium'):
         await remove_premium_input(update, context)
 
-# ===== КОМАНДЫ (НОЧНАЯ ТЕМА) =====
+# ===== КОМАНДЫ (МНОГО ПУСТЫХ СТРОК) =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
@@ -368,10 +373,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]]
         await update.message.reply_text(
             "🌙 <b>Добро пожаловать в DotBotRPG</b> 🌙\n"
+            "\n"
             "━━━━━━━━━━━━━━━━━━━\n"
+            "\n"
             "✨ Ночной мир RPG ждёт тебя\n"
             "🤝 Взаимодействуй с другими\n"
-            "💫 Создавай свои действия\n\n"
+            "💫 Создавай свои действия\n"
+            "\n"
             "⬇️ <b>Выберите свой пол:</b>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -409,10 +417,15 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"🌙 <b>DotBotRPG</b> 🌙\n"
+        f"\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👋 <b>Привет, {name}!</b>\n\n"
+        f"\n"
+        f"👋 <b>Привет, {name}!</b>\n"
+        f"\n"
         f"📱 <b>Главное меню</b>\n"
-        f"⬇️ Выберите действие:",
+        f"\n"
+        f"⬇️ Выберите действие:\n"
+        f"\n",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -449,10 +462,15 @@ async def show_main_menu_from_query(query):
     
     await query.edit_message_text(
         f"🌙 <b>DotBotRPG</b> 🌙\n"
+        f"\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👋 <b>Привет, {name}!</b>\n\n"
+        f"\n"
+        f"👋 <b>Привет, {name}!</b>\n"
+        f"\n"
         f"📱 <b>Главное меню</b>\n"
-        f"⬇️ Выберите действие:",
+        f"\n"
+        f"⬇️ Выберите действие:\n"
+        f"\n",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -473,7 +491,9 @@ async def settings_menu(query):
     max_actions = 999 if user[5] == 'creator' else 25 if user[6] else 5
     
     text = f"⚙️ <b>Настройки</b>\n"
+    text += f"\n"
     text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     text += f"👤 <b>Имя:</b> {name}\n"
     text += f"⚧ <b>Пол:</b> {gender}\n"
     text += f"📊 <b>Статус:</b> {role}"
@@ -483,6 +503,7 @@ async def settings_menu(query):
         text += f"\n📅 <b>Активен до:</b> {user[7][:10]}"
     elif user[6]:
         text += "\n📅 <b>Активен:</b> навсегда"
+    text += f"\n"
     
     keyboard = []
     if user[6] or user[5] == 'creator':
@@ -507,8 +528,11 @@ async def change_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "✏️ <b>Введите новое имя</b>\n"
+        "\n"
         "━━━━━━━━━━━━━━━━━━━\n"
+        "\n"
         "Максимум 64 символа\n"
+        "\n"
         "Напишите /cancel для отмены",
         parse_mode="HTML"
     )
@@ -585,15 +609,20 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     top_actions = c.fetchall()
     conn.close()
     
-    text = f"📊 <b>Статистика</b>\n━━━━━━━━━━━━━━━━━━━\n"
+    text = f"📊 <b>Статистика</b>\n"
+    text += f"\n"
+    text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     text += f"📦 <b>Всего действий:</b> {total_actions}\n"
-    text += f"⚡ <b>Всего использований:</b> {total_uses}\n\n"
+    text += f"⚡ <b>Всего использований:</b> {total_uses}\n"
+    text += f"\n"
     text += f"🏆 <b>Популярные действия:</b>\n"
     if top_actions:
         for i, (name, count) in enumerate(top_actions, 1):
             text += f"{i}. {name.capitalize()} — {count} раз\n"
     else:
         text += "Пока нет данных."
+    text += f"\n"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="settings")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -605,7 +634,10 @@ async def all_actions_menu(query):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     
-    text = f"📋 <b>Доступные действия</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"📋 <b>Доступные действия</b>\n"
+    text += f"\n"
+    text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     text += f"🔹 <b>Встроенные (20 шт.):</b>\n"
     
     action_list = list(DEFAULT_ACTIONS.keys())
@@ -622,8 +654,10 @@ async def all_actions_menu(query):
         text += f"\n🔸 Кастомных действий пока нет.\n"
     
     text += f"\n📌 <b>Как использовать:</b>\n"
+    text += f"\n"
     text += f"В любом чате напишите:\n"
-    text += f"<code>Обнять @username</code>"
+    text += f"<code>Обнять @username</code>\n"
+    text += f"\n"
     
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -640,13 +674,22 @@ async def my_actions_menu(query):
         return
     custom = get_custom_actions()
     if not custom:
-        text = f"📋 <b>Ваши действия</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"📋 <b>Ваши действия</b>\n"
+        text += f"\n"
+        text += f"━━━━━━━━━━━━━━━━━━━\n"
+        text += f"\n"
         text += "У вас нет кастомных действий.\n"
-        text += "Создайте первое через <b>➕ Создать действие</b>."
+        text += "\n"
+        text += "Создайте первое через <b>➕ Создать действие</b>.\n"
+        text += "\n"
     else:
-        text = f"📋 <b>Ваши действия</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"📋 <b>Ваши действия</b>\n"
+        text += f"\n"
+        text += f"━━━━━━━━━━━━━━━━━━━\n"
+        text += f"\n"
         for i, c in enumerate(custom, 1):
             text += f"{i}. {c[1].capitalize()} (использовано: {c[5]} раз)\n"
+        text += f"\n"
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -670,14 +713,19 @@ async def create_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE
             limit_text = f"{max_actions}"
         await query.edit_message_text(
             f"❌ Вы достигли лимита в <b>{limit_text}</b> кастомных действий.\n"
+            f"\n"
             f"{'Оформите Премиум для доступа к 25 действиям.' if not user[6] and user[5] != 'creator' else ''}",
             parse_mode="HTML"
         )
         return
     await query.edit_message_text(
-        f"✏️ <b>Создание нового действия</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        f"✏️ <b>Создание нового действия</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
         f"Введите название действия (триггер).\n"
-        f"Максимум 35 символов.\n\n"
+        f"Максимум 35 символов.\n"
+        f"\n"
         f"Напишите /cancel для отмены",
         parse_mode="HTML"
     )
@@ -716,9 +764,13 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         data['trigger'] = text
         data['step'] = 'male_response'
         await update.message.reply_text(
-            f"✏️ <b>Ответ для МУЖСКОГО пола</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✏️ <b>Ответ для МУЖСКОГО пола</b>\n"
+            f"\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"\n"
             f"Используйте шаблон: <code>Username1 действие Username2</code>\n"
-            f"Можно добавлять свой текст после Username2.\n\n"
+            f"Можно добавлять свой текст после Username2.\n"
+            f"\n"
             f"Пример: <code>Username1 чмокнул Username2 и убежал</code>",
             parse_mode="HTML"
         )
@@ -730,9 +782,13 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         data['male_response'] = text
         data['step'] = 'female_response'
         await update.message.reply_text(
-            f"✏️ <b>Ответ для ЖЕНСКОГО пола</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+            f"✏️ <b>Ответ для ЖЕНСКОГО пола</b>\n"
+            f"\n"
+            f"━━━━━━━━━━━━━━━━━━━\n"
+            f"\n"
             f"Используйте шаблон: <code>Username1 действие Username2</code>\n"
-            f"Можно добавлять свой текст после Username2.\n\n"
+            f"Можно добавлять свой текст после Username2.\n"
+            f"\n"
             f"Пример: <code>Username1 чмокнула Username2 и убежала</code>",
             parse_mode="HTML"
         )
@@ -747,7 +803,10 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         if user[6] or user[5] == 'creator':
             keyboard = [[InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_emoji")]]
             await update.message.reply_text(
-                f"✏️ <b>Выбор эмодзи</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+                f"✏️ <b>Выбор эмодзи</b>\n"
+                f"\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"\n"
                 f"Отправьте ОДИН эмодзи для этого действия.\n"
                 f"Или нажмите кнопку 'Пропустить'.",
                 parse_mode="HTML",
@@ -759,8 +818,10 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
             add_custom_action(user_id, data['trigger'], data['male_response'], data['female_response'], '')
             context.user_data.pop('creating_action', None)
             await update.message.reply_text(
-                f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n\n"
+                f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n"
+                f"\n"
                 f"Теперь вы можете использовать его в чате:\n"
+                f"\n"
                 f"<code>@{update.effective_user.username} {data['trigger'].capitalize()} @username</code>",
                 parse_mode="HTML"
             )
@@ -780,8 +841,10 @@ async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     add_custom_action(user_id, data['trigger'], data['male_response'], data['female_response'], '')
     context.user_data.pop('creating_action', None)
     await query.edit_message_text(
-        f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n\n"
+        f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n"
+        f"\n"
         f"Теперь вы можете использовать его в чате:\n"
+        f"\n"
         f"<code>@{query.from_user.username} {data['trigger'].capitalize()} @username</code>",
         parse_mode="HTML"
     )
@@ -807,7 +870,10 @@ async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append([InlineKeyboardButton(f"🗑️ {c[1].capitalize()}", callback_data=f"delete_{c[0]}")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
     await query.edit_message_text(
-        f"🗑️ <b>Удаление действия</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🗑️ <b>Удаление действия</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
         f"Выберите действие для удаления:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -842,7 +908,10 @@ async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Доступно только для Создателя")
         return
     allowed = get_allowed_users()
-    text = f"👥 <b>Доверенные пользователи</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"👥 <b>Доверенные пользователи</b>\n"
+    text += f"\n"
+    text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     if not allowed:
         text += "Список пуст."
     else:
@@ -853,6 +922,7 @@ async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{i}. {name} (ID: {uid}) — {premium}\n"
         if len(allowed) > 10:
             text += f"\n... и ещё {len(allowed) - 10} пользователей"
+    text += f"\n"
     keyboard = [
         [InlineKeyboardButton("➕ Добавить", callback_data="add_user")],
         [InlineKeyboardButton("➖ Удалить", callback_data="remove_user")],
@@ -867,8 +937,12 @@ async def add_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     await query.edit_message_text(
-        f"✏️ <b>Добавление пользователя</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Введите ID или @username пользователя.\n\n"
+        f"✏️ <b>Добавление пользователя</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
+        f"Введите ID или @username пользователя.\n"
+        f"\n"
         f"Напишите /cancel для отмены",
         parse_mode="HTML"
     )
@@ -926,7 +1000,10 @@ async def remove_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"remove_{uid}")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
     await query.edit_message_text(
-        f"👥 <b>Удаление пользователя</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👥 <b>Удаление пользователя</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
         f"Выберите пользователя:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -956,10 +1033,14 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user[5] == 'creator':
         premium_users = get_premium_users()
         free_users = len(get_allowed_users()) - len(premium_users)
-        text = f"⭐ <b>Премиум-система</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"⭐ <b>Премиум-система</b>\n"
+        text += f"\n"
+        text += f"━━━━━━━━━━━━━━━━━━━\n"
+        text += f"\n"
         text += f"👑 <b>Ваш статус:</b> Создатель\n"
         text += f"📊 <b>Премиум-пользователей:</b> {len(premium_users)}\n"
-        text += f"📊 <b>Бесплатных пользователей:</b> {free_users}\n\n"
+        text += f"📊 <b>Бесплатных пользователей:</b> {free_users}\n"
+        text += f"\n"
         text += f"<b>Управление:</b>"
         keyboard = [
             [InlineKeyboardButton("📋 Список премиум", callback_data="premium_list")],
@@ -970,7 +1051,10 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
         return
     if user[6]:
-        text = f"⭐ <b>Премиум активен!</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"⭐ <b>Премиум активен!</b>\n"
+        text += f"\n"
+        text += f"━━━━━━━━━━━━━━━━━━━\n"
+        text += f"\n"
         text += f"👤 <b>Статус:</b> Премиум\n"
         text += f"📊 <b>Действий создано:</b> {get_user_actions_count(user_id)} из 25\n"
         text += f"✨ <b>Эмодзи:</b> доступны\n"
@@ -979,15 +1063,20 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"\n📅 <b>Активен до:</b> {user[7][:10]}"
         else:
             text += "\n📅 <b>Активен:</b> навсегда"
-        text += "\n\nСпасибо, что поддерживаете проект! 💜"
+        text += "\n"
+        text += "\nСпасибо, что поддерживаете проект! 💜"
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     else:
-        text = f"⭐ <b>DotBotRPG Премиум</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = f"⭐ <b>DotBotRPG Премиум</b>\n"
+        text += f"\n"
+        text += f"━━━━━━━━━━━━━━━━━━━\n"
+        text += f"\n"
         text += f"🔓 <b>Что вы получите:</b>\n"
         text += f"✅ 25 кастомных действий (вместо 5)\n"
         text += f"✅ Эмодзи в действиях\n"
         text += f"✅ Смена имени в настройках\n"
-        text += f"✅ Приоритетная поддержка\n\n"
+        text += f"✅ Приоритетная поддержка\n"
+        text += f"\n"
         text += f"💳 <b>Тарифы:</b>\n"
         text += f"• 199 ₽ / месяц\n"
         text += f"• 1 490 ₽ / навсегда"
@@ -1008,12 +1097,16 @@ async def premium_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not premium_users:
         await query.edit_message_text("📋 Премиум-пользователей нет.")
         return
-    text = f"📋 <b>Премиум-пользователи</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"📋 <b>Премиум-пользователи</b>\n"
+    text += f"\n"
+    text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     for uid, until in premium_users:
         u = get_user(uid)
         name = u[1] if u else str(uid)
         status = "навсегда" if until is None else until[:10]
         text += f"• {name} — {status}\n"
+    text += f"\n"
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="premium")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -1024,8 +1117,12 @@ async def give_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.edit_message_text("❌ Доступ запрещён")
         return
     await query.edit_message_text(
-        f"✏️ <b>Выдача премиум</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Введите ID или @username пользователя.\n\n"
+        f"✏️ <b>Выдача премиум</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
+        f"Введите ID или @username пользователя.\n"
+        f"\n"
         f"Напишите /cancel для отмены",
         parse_mode="HTML"
     )
@@ -1090,8 +1187,12 @@ async def remove_premium_start(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text("❌ Доступ запрещён")
         return
     await query.edit_message_text(
-        f"✏️ <b>Отзыв премиум</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"Введите ID или @username пользователя.\n\n"
+        f"✏️ <b>Отзыв премиум</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━━━━━━━━\n"
+        f"\n"
+        f"Введите ID или @username пользователя.\n"
+        f"\n"
         f"Напишите /cancel для отмены",
         parse_mode="HTML"
     )
@@ -1188,7 +1289,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
         return
-    text = f"🌙 <b>DotBotRPG — помощь</b>\n━━━━━━━━━━━━━━━━━━━\n\n"
+    text = f"🌙 <b>DotBotRPG — помощь</b>\n"
+    text += f"\n"
+    text += f"━━━━━━━━━━━━━━━━━━━\n"
+    text += f"\n"
     text += f"📌 <b>Команды в ЛС:</b>\n"
     text += f"/start — Главное меню\n"
     text += f"/menu — Главное меню\n"
@@ -1198,7 +1302,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += f"/help — Помощь"
     
     if user_id == CREATOR_ID:
-        text += f"\n\n👑 <b>Команды Создателя:</b>\n"
+        text += f"\n"
+        text += f"\n👑 <b>Команды Создателя:</b>\n"
         text += f"/adduser — Добавить пользователя\n"
         text += f"/removeuser — Удалить пользователя\n"
         text += f"/userlist — Список доверенных\n"
@@ -1206,7 +1311,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"/removepremium — Забрать премиум\n"
         text += f"/premiumlist — Список премиум"
     
-    text += f"\n\n📌 <b>Встроенные действия (20 шт.):</b>\n"
+    text += f"\n"
+    text += f"\n📌 <b>Встроенные действия (20 шт.):</b>\n"
+    text += f"\n"
     
     action_list = list(DEFAULT_ACTIONS.keys())
     for i, action in enumerate(action_list, 1):
@@ -1214,8 +1321,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{i}. {action.capitalize()} {emoji}\n"
     
     text += f"\n📌 <b>Как использовать:</b>\n"
+    text += f"\n"
     text += f"В любом чате: <code>Обнять @username</code>\n"
-    text += f"Пример: <code>Обнять @petya</code>"
+    text += f"\n"
+    text += f"Пример: <code>Обнять @petya</code>\n"
+    text += f"\n"
     
     await update.message.reply_text(text, parse_mode="HTML")
 
