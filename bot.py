@@ -141,7 +141,6 @@ def is_creator(user_id):
     return user_id == CREATOR_ID
 
 def get_custom_actions():
-    """Только действия Создателя"""
     conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
     c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
@@ -240,6 +239,12 @@ def _build_menu_text(title, lines):
         text += line + "\n"
     return text.rstrip("\n")
 
+def normalize_username_placeholders(text):
+    """Заменяет Username1/Username2 независимо от регистра"""
+    text = re.sub(r'(?i)Username1', 'Username1', text)
+    text = re.sub(r'(?i)Username2', 'Username2', text)
+    return text
+
 # ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
@@ -249,33 +254,29 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer([], cache_time=0)
         return
 
+    # ===== ПУСТОЙ ЗАПРОС — ОДНА ПОДСКАЗКА =====
     if not query_text:
         results = [
             InlineQueryResultArticle(
                 id="help",
-                title="🌙 DotBotRPG",
-                description="Введите trig. <действие> @username",
+                title="📖 DotBotRPG",
+                description="Введите: <Действие> @username",
                 input_message_content=InputTextMessageContent(
-                    "🌙 <b>DotBotRPG</b>\nВведите <code>trig. &lt;действие&gt; @username</code>",
+                    "📖 <b>DotBotRPG</b>\n\nВведите:\n<code>&lt;Действие&gt; @username</code>\n\nПример:\n<code>Обнять @petya</code>",
                     parse_mode="HTML"
                 )
             )
         ]
-        for action in ["обнять", "поцеловать", "ударить", "погладить"]:
-            results.append(InlineQueryResultArticle(
-                id=action,
-                title=action.capitalize(),
-                description=f"Пример: {action.capitalize()} @username",
-                input_message_content=InputTextMessageContent(f"{action.capitalize()} @username")
-            ))
         await update.inline_query.answer(results, cache_time=60)
         return
 
+    # ===== УБИРАЕМ trig. ЕСЛИ ЕСТЬ =====
     if query_text.lower().startswith("trig."):
         query_text = query_text[5:].strip()
 
     parts = query_text.split(" ", 1)
 
+    # ===== ТОЛЬКО ДЕЙСТВИЕ, БЕЗ ПОЛУЧАТЕЛЯ =====
     if len(parts) < 2:
         action_prefix = parts[0].lower()
         results = []
@@ -298,17 +299,19 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title="🤖 Ничего не найдено",
                 description="Попробуйте: обнять, поцеловать, ударить...",
                 input_message_content=InputTextMessageContent(
-                    "🤖 Такого действия нет!\\n\\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
                 )
             )]
         await update.inline_query.answer(results, cache_time=60)
         return
 
+    # ===== ДЕЙСТВИЕ + ПОЛУЧАТЕЛЬ =====
     action = parts[0].lower()
     target_input = parts[1].strip()
     if target_input.startswith("@"):
         target_input = target_input[1:]
 
+    # Проверка на себя
     if update.effective_user.username and target_input == update.effective_user.username:
         await update.inline_query.answer([
             InlineQueryResultArticle(
@@ -319,6 +322,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=0)
         return
 
+    # Проверка на бота
     if target_input.lower() in ("dotbotrpg_bot", "dotbotrpg"):
         await update.inline_query.answer([
             InlineQueryResultArticle(
@@ -337,7 +341,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title="❌ Зарегистрируйтесь!",
                 description="Напишите /start",
                 input_message_content=InputTextMessageContent(
-                    "❌ Вы не зарегистрированы!\\nНапишите <b>/start</b>", parse_mode="HTML"
+                    "❌ Вы не зарегистрированы!\nНапишите <b>/start</b>", parse_mode="HTML"
                 )
             )
         ], cache_time=60)
@@ -406,7 +410,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             title="🤖 Такого действия нет!",
             description="Попробуйте: обнять, поцеловать, ударить, погладить",
             input_message_content=InputTextMessageContent(
-                "🤖 Такого действия нет!\\n\\nДоступные действия:\\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                "🤖 Такого действия нет!\n\nДоступные действия:\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
             )
         )
     ], cache_time=60)
@@ -822,6 +826,8 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
     elif data["step"] == "male_response":
+        # Приводим к правильному регистру
+        text = normalize_username_placeholders(text)
         if "Username1" not in text or "Username2" not in text:
             await update.message.reply_text("❌ В ответе должны быть <b>Username1</b> и <b>Username2</b>", parse_mode="HTML")
             return
@@ -841,6 +847,7 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
     elif data["step"] == "female_response":
+        text = normalize_username_placeholders(text)
         if "Username1" not in text or "Username2" not in text:
             await update.message.reply_text("❌ В ответе должны быть <b>Username1</b> и <b>Username2</b>", parse_mode="HTML")
             return
@@ -917,7 +924,7 @@ async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await show_main_menu_from_query(query)
 
-# ===== УДАЛЕНИЕ ДЕЙСТВИЙ (С ПАГИНАЦИЕЙ) =====
+# ===== УДАЛЕНИЕ ДЕЙСТВИЙ =====
 async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -1389,7 +1396,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.extend([
         "",
         "📌 <b>Инлайн-режим (в чатах):</b>",
-        "@DotBotRPG_bot trig. <действие> @username",
+        "@DotBotRPG_bot <Действие> @username",
         "",
         "📌 <b>Встроенные действия (20 шт.):</b>",
         ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
