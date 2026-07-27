@@ -1,3 +1,532 @@
+import logging
+import os
+import sqlite3
+from datetime import datetime, timedelta
+import asyncio
+import re
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder, InlineQueryHandler, MessageHandler, filters
+
+# ===== КОНФИГУРАЦИЯ =====
+TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAEu7HrWbdaAHWyxu9yl94Qfc4K6HoagFyA")
+CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
+TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
+DB_PATH = "/data/dotbot.db"
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
+DEFAULT_ACTIONS = {
+    "обнять": {"male": "обнял", "female": "обняла", "emoji": "🫂"},
+    "ударить": {"male": "ударил", "female": "ударила", "emoji": "💥"},
+    "погладить": {"male": "погладил", "female": "погладила", "emoji": "✨"},
+    "поцеловать": {"male": "поцеловал", "female": "поцеловала", "emoji": "😘"},
+    "сесть": {"male": "сел рядом с", "female": "села рядом с", "emoji": "🪑"},
+    "успокоить": {"male": "успокоил", "female": "успокоила", "emoji": "🫂"},
+    "поговорить": {"male": "поговорил с", "female": "поговорила с", "emoji": "💬"},
+    "пожениться": {"male": "поженился на", "female": "поженилась на", "emoji": "💍"},
+    "завести отношения": {"male": "завёл отношения с", "female": "завела отношения с", "emoji": "💕"},
+    "укусить": {"male": "укусил", "female": "укусила", "emoji": "🦷"},
+    "щекотать": {"male": "пощекотал", "female": "пощекотала", "emoji": "🤣"},
+    "подарить цветы": {"male": "подарил цветы", "female": "подарила цветы", "emoji": "🌹"},
+    "обнять крепко": {"male": "крепко обнял", "female": "крепко обняла", "emoji": "🤗"},
+    "потанцевать": {"male": "потанцевал с", "female": "потанцевала с", "emoji": "💃"},
+    "спеть": {"male": "спел для", "female": "спела для", "emoji": "🎤"},
+    "приготовить еду": {"male": "приготовил еду для", "female": "приготовила еду для", "emoji": "🍳"},
+    "сделать массаж": {"male": "сделал массаж", "female": "сделала массаж", "emoji": "💆"},
+    "поздравить": {"male": "поздравил", "female": "поздравила", "emoji": "🎉"},
+    "извиниться": {"male": "извинился перед", "female": "извинилась перед", "emoji": "🙏"},
+    "попросить прощения": {"male": "попросил прощения у", "female": "попросила прощения у", "emoji": "🥺"}
+}
+
+# ===== ИНДЕКСЫ БД =====
+U_ID = 0
+U_FIRST_NAME = 1
+U_GENDER = 2
+U_CUSTOM_NAME = 3
+U_ROLE = 4
+U_IS_PREMIUM = 5
+U_PREMIUM_UNTIL = 6
+U_REGISTERED_AT = 7
+PAGE_SIZE = 4
+
+# ===== БАЗА ДАННЫХ =====
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        first_name TEXT,
+        gender TEXT DEFAULT 'male',
+        custom_name TEXT DEFAULT '',
+        role TEXT DEFAULT 'user',
+        is_premium BOOLEAN DEFAULT FALSE,
+        premium_until TIMESTAMP NULL,
+        registered_at TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS allowed_users (
+        user_id INTEGER PRIMARY KEY,
+        added_by INTEGER,
+        added_at TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS custom_actions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER,
+        trigger TEXT UNIQUE,
+        response_male TEXT,
+        response_female TEXT,
+        emoji TEXT DEFAULT '',
+        uses INTEGER DEFAULT 0,
+        created_at TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS action_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        action_name TEXT,
+        target_name TEXT,
+        used_at TIMESTAMP
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS user_names (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        first_name TEXT,
+        custom_name TEXT,
+        updated_at TIMESTAMP
+    )""")
+    c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, role, registered_at)
+        VALUES (?, ?, ?, ?, ?)""", (CREATOR_ID, "𝓜𝓪𝓭𝓪𝓶", "female", "creator", datetime.now()))
+    c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
+        VALUES (?, ?, ?)""", (CREATOR_ID, CREATOR_ID, datetime.now()))
+    conn.commit()
+    conn.close()
+    print("✅ База данных инициализирована")
+
+def get_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = c.fetchone()
+    conn.close()
+    return user
+
+def register_user(user_id, first_name, gender="male"):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, registered_at)
+        VALUES (?, ?, ?, ?)""", (user_id, first_name, gender, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def update_user_gender(user_id, gender):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET gender = ? WHERE user_id = ?", (gender, user_id))
+    conn.commit()
+    conn.close()
+
+def update_user_name(user_id, name):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET custom_name = ? WHERE user_id = ?", (name, user_id))
+    conn.commit()
+    conn.close()
+
+def is_trusted(user_id):
+    if user_id == CREATOR_ID:
+        return True
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM allowed_users WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    return result is not None
+
+def is_creator(user_id):
+    return user_id == CREATOR_ID
+
+def get_custom_actions(user_id=None):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if user_id is not None:
+        c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (user_id,))
+    else:
+        c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions")
+    actions = c.fetchall()
+    conn.close()
+    return actions
+
+def add_custom_action(owner_id, trigger, response_male, response_female, emoji=""):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO custom_actions (owner_id, trigger, response_male, response_female, emoji, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)""", (owner_id, trigger.lower(), response_male, response_female, emoji, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def delete_custom_action(action_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM custom_actions WHERE id = ?", (action_id,))
+    conn.commit()
+    conn.close()
+
+def get_user_actions_count(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (user_id,))
+    count = c.fetchone()[0]
+    conn.close()
+    return count
+
+def get_allowed_users():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM allowed_users")
+    users = c.fetchall()
+    conn.close()
+    return [u[0] for u in users]
+
+def add_allowed_user(user_id, added_by):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
+        VALUES (?, ?, ?)""", (user_id, added_by, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def remove_allowed_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM allowed_users WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+def get_premium_users():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, premium_until FROM users WHERE is_premium = TRUE")
+    users = c.fetchall()
+    conn.close()
+    return users
+
+def set_premium(user_id, until=None):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""UPDATE users SET is_premium = TRUE, premium_until = ? WHERE user_id = ?""", (until, user_id))
+    conn.commit()
+    conn.close()
+
+def remove_premium(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""UPDATE users SET is_premium = FALSE, premium_until = NULL WHERE user_id = ?""", (user_id,))
+    conn.commit()
+    conn.close()
+
+def log_action(user_id, action_name, target_name):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO action_logs (user_id, action_name, target_name, used_at)
+        VALUES (?, ?, ?, ?)""", (user_id, action_name, target_name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def check_access(user_id):
+    return user_id == CREATOR_ID or is_trusted(user_id)
+
+def save_user_name(user_id, username, first_name):
+    if not username:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT OR REPLACE INTO user_names (user_id, username, first_name, updated_at)
+        VALUES (?, ?, ?, ?)""", (user_id, username, first_name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_user_display_name(username):
+    if not username:
+        return username
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, first_name, custom_name FROM user_names WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    if result:
+        user = get_user(result[0])
+        if user and user[U_CUSTOM_NAME]:
+            return user[U_CUSTOM_NAME]
+        if result[1]:
+            return result[1]
+    return username
+
+# ===== УТИЛИТЫ =====
+def _format_name(name):
+    return f"<b><u>{name}</u></b>"
+
+def _build_menu_text(title, lines):
+    text = f"🌙 <b>{title}</b>\n"
+    text += "━" * 16 + "\n\n"
+    for line in lines:
+        text += line + "\n"
+    return text.rstrip("\n") + "\n\n"
+
+def normalize_username_placeholders(text):
+    text = re.sub(r'(?i)Username1', 'Username1', text)
+    text = re.sub(r'(?i)Username2', 'Username2', text)
+    return text
+
+# ===== ИНЛАЙН-РЕЖИМ =====
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query_text = update.inline_query.query.strip()
+    user_id = update.effective_user.id
+
+    if not check_access(user_id):
+        await update.inline_query.answer([], cache_time=0)
+        return
+
+    if not query_text:
+        results = [
+            InlineQueryResultArticle(
+                id="help",
+                title="📖 DotBotRPG",
+                description="Введите: <Действие> @username",
+                input_message_content=InputTextMessageContent(
+                    "📖 <b>DotBotRPG</b>\n\nВведите:\n<code>&lt;Действие&gt; @username</code>\n\nПример:\n<code>Обнять @petya</code>",
+                    parse_mode="HTML"
+                )
+            )
+        ]
+        await update.inline_query.answer(results, cache_time=60)
+        return
+
+    if query_text.lower().startswith("trig."):
+        query_text = query_text[5:].strip()
+
+    target_input = ""
+    action = query_text
+    custom = get_custom_actions(user_id)
+
+    found_custom = False
+    for c in custom:
+        trigger = c[1]
+        if query_text.lower().startswith(trigger.lower()):
+            action = trigger
+            rest = query_text[len(trigger):].strip()
+            if rest.startswith("@"):
+                target_input = rest[1:]
+            else:
+                target_input = rest
+            found_custom = True
+            break
+
+    if not found_custom:
+        parts = query_text.split(" ", 1)
+        if len(parts) > 1:
+            first_word = parts[0].lower()
+            if first_word in DEFAULT_ACTIONS:
+                action = first_word
+                rest = parts[1].strip()
+                if rest.startswith("@"):
+                    target_input = rest[1:]
+                else:
+                    target_input = rest
+            else:
+                action = parts[0]
+                if len(parts) > 1:
+                    if parts[1].startswith("@"):
+                        target_input = parts[1][1:]
+                    else:
+                        target_input = parts[1]
+        else:
+            action = query_text
+
+    if not target_input:
+        words = query_text.split(" ")
+        for i, w in enumerate(words):
+            if w.startswith("@"):
+                target_input = w[1:]
+                action = " ".join(words[:i]).strip()
+                if not action and i > 0:
+                    action = " ".join(words[:i])
+                break
+
+    if not target_input:
+        action_lower = action.lower()
+        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
+        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
+        matched = list(dict.fromkeys(matched))
+        results = []
+        for act in matched[:5]:
+            emoji = ""
+            if act in DEFAULT_ACTIONS:
+                emoji = DEFAULT_ACTIONS[act]["emoji"]
+            else:
+                for c in custom:
+                    if c[1] == act:
+                        emoji = c[4] or ""
+                        break
+            results.append(InlineQueryResultArticle(
+                id=act,
+                title=f"{emoji} {act.capitalize()}",
+                description=f"{act} @username",
+                input_message_content=InputTextMessageContent(f"{act} @username")
+            ))
+        if not results:
+            results = [InlineQueryResultArticle(
+                id="notfound",
+                title="🤖 Ничего не найдено",
+                description="Попробуйте: обнять, поцеловать, ударить...",
+                input_message_content=InputTextMessageContent(
+                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                )
+            )]
+        await update.inline_query.answer(results, cache_time=60)
+        return
+
+    sender_gender = "male"
+    sender_name = "Пользователь"
+    user = get_user(user_id)
+    if user:
+        sender_gender = user[U_GENDER] if user else "male"
+        sender_name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME] or update.effective_user.first_name or "Пользователь"
+    else:
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id="nouser",
+                title="❌ Зарегистрируйтесь!",
+                description="Напишите /start",
+                input_message_content=InputTextMessageContent(
+                    "❌ Вы не зарегистрированы!\nНапишите <b>/start</b>", parse_mode="HTML"
+                )
+            )
+        ], cache_time=60)
+        return
+
+    target_display_name = get_user_display_name(target_input)
+    if target_display_name == target_input:
+        try:
+            chat = await context.bot.get_chat(f"@{target_input}")
+            if chat and chat.first_name:
+                target_display_name = chat.first_name
+        except Exception:
+            pass
+
+    sender_name_f = _format_name(sender_name)
+    target_name_f = _format_name(target_display_name)
+
+    response = None
+    action_found = None
+    emoji = ""
+
+    for c in custom:
+        if c[1].lower() == action.lower():
+            action_found = c[1]
+            template = c[2] if sender_gender == "male" else c[3]
+            emoji = c[4] or ""
+            template = template.replace("Username1", sender_name_f)
+            template = template.replace("Username2", target_name_f)
+            response = f"{emoji} | <b>{template}</b>"
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
+            conn.commit()
+            conn.close()
+            break
+
+    if not response and action.lower() in DEFAULT_ACTIONS:
+        action_found = action.lower()
+        data = DEFAULT_ACTIONS[action_found]
+        verb = data["male"] if sender_gender == "male" else data["female"]
+        emoji = data["emoji"]
+        response = f"{emoji} | <b>{sender_name_f} {verb} {target_name_f}</b>"
+
+    if response:
+        log_action(user_id, action_found, target_display_name)
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id=action_found,
+                title=f"{action_found.capitalize()} → {target_display_name}",
+                description=response.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", ""),
+                input_message_content=InputTextMessageContent(response, parse_mode="HTML")
+            )
+        ], cache_time=0)
+        return
+
+    await update.inline_query.answer([
+        InlineQueryResultArticle(
+            id="notfound",
+            title="🤖 Такого действия нет!",
+            description="Попробуйте: обнять, поцеловать, ударить, погладить",
+            input_message_content=InputTextMessageContent(
+                "🤖 Такого действия нет!\n\nДоступные действия:\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+            )
+        )
+    ], cache_time=60)
+
+# ===== ОБРАБОТЧИК ТЕКСТА =====
+async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not check_access(user_id):
+        return
+
+    if update.effective_user:
+        username = update.effective_user.username
+        first_name = update.effective_user.first_name
+        if username and first_name:
+            save_user_name(user_id, username, first_name)
+
+    state = context.user_data
+    
+    if state.get("creating_action") and state["creating_action"].get("step"):
+        await create_action_input(update, context)
+    elif state.get("changing_name"):
+        await handle_name_input(update, context)
+    elif state.get("adding_user"):
+        await add_user_input(update, context)
+    elif state.get("giving_premium"):
+        await give_premium_input(update, context)
+    elif state.get("removing_premium"):
+        await remove_premium_input(update, context)
+    elif state.get("creating_action_emoji"):
+        await handle_emoji_input(update, context)
+
+# ===== КОМАНДЫ =====
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not check_access(user_id):
+        return
+    
+    if update.effective_user:
+        username = update.effective_user.username
+        first_name = update.effective_user.first_name
+        if username and first_name:
+            save_user_name(user_id, username, first_name)
+    
+    user = get_user(user_id)
+    if user is None:
+        keyboard = [[
+            InlineKeyboardButton("👦 Мужской", callback_data="gender_male"),
+            InlineKeyboardButton("👧 Женский", callback_data="gender_female")
+        ]]
+        text = _build_menu_text(
+            "Добро пожаловать в DotBotRPG",
+            [
+                "✨ Ночной мир RPG ждёт тебя",
+                "🤝 Взаимодействуй с другими",
+                "💫 Создавай свои действия",
+                "",
+                "⬇️ <b>Выберите свой пол:</b>"
+            ]
+        )
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await show_main_menu(update, context)
+
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
@@ -73,7 +602,6 @@ async def show_main_menu_from_query(query):
         ]
     )
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-
 # ===== НАСТРОЙКИ =====
 async def settings_menu(query):
     user_id = query.from_user.id
@@ -116,7 +644,6 @@ async def settings_menu(query):
 
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== СМЕНА ИМЕНИ =====
 async def change_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -170,7 +697,6 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Имя изменено на <b>&quot;{new_name}&quot;</b>!", parse_mode="HTML")
     await show_main_menu(update, context)
 
-# ===== СМЕНА ПОЛА =====
 async def change_gender_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not check_access(query.from_user.id):
@@ -193,7 +719,6 @@ async def change_gender_set(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(f"✅ Пол изменён на <b>{'Мужской' if gender == 'male' else 'Женский'}</b>!", parse_mode="HTML")
     await settings_menu(query)
 
-# ===== СТАТИСТИКА =====
 async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -227,7 +752,6 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="settings")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== ВСЕ ДЕЙСТВИЯ =====
 async def all_actions_menu(query):
     user_id = query.from_user.id
     if not check_access(user_id):
@@ -260,7 +784,6 @@ async def all_actions_menu(query):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== МОИ ДЕЙСТВИЯ =====
 async def my_actions_menu(query):
     user_id = query.from_user.id
     if not check_access(user_id):
@@ -283,7 +806,6 @@ async def my_actions_menu(query):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== СОЗДАНИЕ КАСТОМНОГО ДЕЙСТВИЯ =====
 async def create_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -460,7 +982,6 @@ async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await show_main_menu_from_query(query)
 
-# ===== УДАЛЕНИЕ ДЕЙСТВИЙ =====
 async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -539,7 +1060,6 @@ async def delete_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
     page = int(query.data.split("_")[1])
     await show_delete_page(query, context, page)
 
-# ===== ПОЛЬЗОВАТЕЛИ =====
 async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -649,7 +1169,6 @@ async def remove_user_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.edit_message_text("✅ Доступ отозван.")
     await remove_user_start(update, context)
 
-# ===== ПРЕМИУМ =====
 async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -843,7 +1362,6 @@ async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text("✅ Премиум отозван!")
     await show_main_menu(update, context)
 
-# ===== КНОПКИ =====
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -905,7 +1423,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "noop":
         pass
 
-# ===== HELP =====
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
@@ -948,7 +1465,6 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     await update.message.reply_text("❌ Отменено")
 
-# ===== ЗАПУСК =====
 async def main():
     print("🚀 Инициализация базы данных...")
     init_db()
