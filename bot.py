@@ -17,7 +17,6 @@ if not TOKEN:
     raise ValueError("BOT_TOKEN not set in environment variables!")
 
 CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
-TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
 DB_PATH = os.environ.get("DB_PATH", "/data/dotbot.db")
 
 if not os.path.exists(os.path.dirname(DB_PATH)):
@@ -295,7 +294,7 @@ async def tutorial_menu(query):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ===== ИНЛАЙН-РЕЖИМ (БЕЗ ZAPOMNIT) =====
+# ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
@@ -357,24 +356,13 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     target_name += " " + target_user.last_name
                 target_id = target_user.id
         except Exception:
-            # Если не найден — оставляем как есть
             pass
     
-    # 2. Если нет @username и это ЛС — пробуем определить из reply
+    # 2. Если нет @username и это ЛС
     if not target_name and chat_type == "private":
-        # Пытаемся найти reply_to_message
-        try:
-            # В инлайн-режиме нет прямого доступа к reply
-            # Поэтому используем собеседника из истории
-            pass
-        except:
-            pass
-        
-        # Если нет reply — используем "Собеседник"
-        if not target_name:
-            target_name = "Собеседник"
+        target_name = "Собеседник"
     
-    # 3. Если нет цели и не ЛС — используем "Собеседник"
+    # 3. Если нет цели
     if not target_name:
         target_name = "Собеседник"
     
@@ -1525,6 +1513,8 @@ async def main():
     init_db()
     
     print("🔧 Создание приложения...")
+    print(f"🔑 Токен: {TOKEN[:10]}...")  # Отладка
+    
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
