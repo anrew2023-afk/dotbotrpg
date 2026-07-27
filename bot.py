@@ -12,8 +12,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAEu7HrWbdaAHWyxu9yl94Qfc4K6HoagFyA")
 CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
 TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
-
-# ===== ПУТЬ К БАЗЕ ДАННЫХ (Volume) =====
 DB_PATH = "/data/dotbot.db"
 
 logging.basicConfig(
@@ -25,19 +23,19 @@ logger = logging.getLogger(__name__)
 # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
 DEFAULT_ACTIONS = {
     "обнять": {"male": "обнял", "female": "обняла", "emoji": "🫂"},
-    "ударить": {"male": "ударил", "female": "ударила", "emoji": "👊"},
-    "погладить": {"male": "погладил", "female": "погладила", "emoji": "🤲"},
-    "поцеловать": {"male": "поцеловал", "female": "поцеловала", "emoji": "💋"},
+    "ударить": {"male": "ударил", "female": "ударила", "emoji": "💥"},
+    "погладить": {"male": "погладил", "female": "погладила", "emoji": "✨"},
+    "поцеловать": {"male": "поцеловал", "female": "поцеловала", "emoji": "😘"},
     "сесть": {"male": "сел рядом с", "female": "села рядом с", "emoji": "🪑"},
     "успокоить": {"male": "успокоил", "female": "успокоила", "emoji": "🫂"},
     "поговорить": {"male": "поговорил с", "female": "поговорила с", "emoji": "💬"},
-    "пожениться": {"male": "поженился на", "female": "поженилась на", "emoji": "💍❤️"},
+    "пожениться": {"male": "поженился на", "female": "поженилась на", "emoji": "💍"},
     "завести отношения": {"male": "завёл отношения с", "female": "завела отношения с", "emoji": "💕"},
     "укусить": {"male": "укусил", "female": "укусила", "emoji": "🦷"},
-    "щекотать": {"male": "пощекотал", "female": "пощекотала", "emoji": "😂"},
-    "подарить цветы": {"male": "подарил цветы", "female": "подарила цветы", "emoji": "💐"},
+    "щекотать": {"male": "пощекотал", "female": "пощекотала", "emoji": "🤣"},
+    "подарить цветы": {"male": "подарил цветы", "female": "подарила цветы", "emoji": "🌹"},
     "обнять крепко": {"male": "крепко обнял", "female": "крепко обняла", "emoji": "🤗"},
-    "потанцевать": {"male": "потанцевал с", "female": "потанцевала с", "emoji": "💃🕺"},
+    "потанцевать": {"male": "потанцевал с", "female": "потанцевала с", "emoji": "💃"},
     "спеть": {"male": "спел для", "female": "спела для", "emoji": "🎤"},
     "приготовить еду": {"male": "приготовил еду для", "female": "приготовила еду для", "emoji": "🍳"},
     "сделать массаж": {"male": "сделал массаж", "female": "сделала массаж", "emoji": "💆"},
@@ -144,10 +142,14 @@ def is_trusted(user_id):
 def is_creator(user_id):
     return user_id == CREATOR_ID
 
-def get_custom_actions():
+def get_custom_actions(user_id=None):
+    """Если user_id указан — возвращает только его действия. Если нет — все."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
+    if user_id is not None:
+        c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (user_id,))
+    else:
+        c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions")
     actions = c.fetchall()
     conn.close()
     return actions
@@ -156,7 +158,7 @@ def add_custom_action(owner_id, trigger, response_male, response_female, emoji="
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""INSERT INTO custom_actions (owner_id, trigger, response_male, response_female, emoji, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)""", (CREATOR_ID, trigger.lower(), response_male, response_female, emoji, datetime.now()))
+        VALUES (?, ?, ?, ?, ?, ?)""", (owner_id, trigger.lower(), response_male, response_female, emoji, datetime.now()))
     conn.commit()
     conn.close()
 
@@ -170,7 +172,7 @@ def delete_custom_action(action_id):
 def get_user_actions_count(user_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
+    c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (user_id,))
     count = c.fetchone()[0]
     conn.close()
     return count
@@ -275,10 +277,9 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query_text.lower().startswith("trig."):
         query_text = query_text[5:].strip()
 
-    # Ищем @username в конце
     target_input = ""
     action = query_text
-    custom = get_custom_actions()
+    custom = get_custom_actions(user_id)
 
     found_custom = False
     for c in custom:
@@ -397,6 +398,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emoji = ""
     is_custom = False
 
+    # Проверяем кастомные (только свои)
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -404,19 +406,20 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = c[4] or ""
             is_custom = True
             response = template.replace("Username1", sender_link).replace("Username2", target_link)
-            response = f"{emoji} {response}".strip()
+            response = f"{emoji} | <b>{response}</b>"
             conn = sqlite3.connect(DB_PATH)
             conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
             conn.commit()
             conn.close()
             break
 
+    # Проверяем встроенные
     if not response and action.lower() in DEFAULT_ACTIONS:
         action_found = action.lower()
         data = DEFAULT_ACTIONS[action_found]
         verb = data["male"] if sender_gender == "male" else data["female"]
         emoji = data["emoji"]
-        response = f"{emoji} {sender_link} {verb} {target_link}"
+        response = f"{emoji} | <b>{sender_link} {verb} {target_link}</b>"
 
     if response:
         log_action(user_id, action_found, target_name)
@@ -424,8 +427,8 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineQueryResultArticle(
                 id=action_found,
                 title=f"{action_found.capitalize()} → {target_name}",
-                description=response.replace("[", "").replace("]", "").replace("tg://user?id=", ""),
-                input_message_content=InputTextMessageContent(response, parse_mode="Markdown")
+                description=response.replace("[", "").replace("]", "").replace("tg://user?id=", "").replace("<b>", "").replace("</b>", ""),
+                input_message_content=InputTextMessageContent(response, parse_mode="HTML")
             )
         ], cache_time=0)
         return
@@ -728,15 +731,15 @@ async def all_actions_menu(query):
         emoji = DEFAULT_ACTIONS[action]["emoji"]
         lines.append(f"{i}. {action.capitalize()} {emoji}")
 
-    custom = get_custom_actions()
+    custom = get_custom_actions(user_id)
     if custom:
         lines.append("")
-        lines.append(f"🔸 <b>Кастомные ({len(custom)} шт.):</b>")
+        lines.append(f"🔸 <b>Ваши кастомные ({len(custom)} шт.):</b>")
         for c in custom:
             lines.append(f"• {c[1].capitalize()}")
     else:
         lines.append("")
-        lines.append("🔸 Кастомных действий пока нет.")
+        lines.append("🔸 У вас нет кастомных действий.")
 
     lines.extend([
         "",
@@ -755,11 +758,8 @@ async def my_actions_menu(query):
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    if not is_creator(user_id):
-        await query.edit_message_text("❌ Доступно только для Создателя")
-        return
 
-    custom = get_custom_actions()
+    custom = get_custom_actions(user_id)
     if not custom:
         lines = [
             "У вас нет кастомных действий.",
@@ -834,7 +834,7 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         if text.lower() in DEFAULT_ACTIONS:
             await update.message.reply_text("⚠️ Действие с таким названием уже есть (встроенное).")
             return
-        custom = get_custom_actions()
+        custom = get_custom_actions(user_id)
         for c in custom:
             if c[1].lower() == text.lower():
                 await update.message.reply_text("⚠️ Действие с таким названием уже есть (кастомное).")
@@ -962,7 +962,8 @@ async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     await show_delete_page(query, context, 1)
 
 async def show_delete_page(query, context, page):
-    custom = get_custom_actions()
+    user_id = query.from_user.id
+    custom = get_custom_actions(user_id)
     if not custom:
         await query.edit_message_text("📋 У вас нет кастомных действий для удаления.")
         return
@@ -1011,7 +1012,7 @@ async def delete_action_confirm(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text("❌ Доступ запрещён")
         return
     action_id = int(query.data.split("_")[1])
-    custom = get_custom_actions()
+    custom = get_custom_actions(user_id)
     action_name = None
     for c in custom:
         if c[0] == action_id:
