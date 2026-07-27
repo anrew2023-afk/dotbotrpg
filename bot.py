@@ -3,6 +3,7 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 import asyncio
+import re
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder, InlineQueryHandler, MessageHandler, filters
@@ -240,7 +241,6 @@ def _build_menu_text(title, lines):
     return text.rstrip("\n")
 
 def normalize_username_placeholders(text):
-    """Заменяет Username1/Username2 независимо от регистра"""
     text = re.sub(r'(?i)Username1', 'Username1', text)
     text = re.sub(r'(?i)Username2', 'Username2', text)
     return text
@@ -254,7 +254,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer([], cache_time=0)
         return
 
-    # ===== ПУСТОЙ ЗАПРОС — ОДНА ПОДСКАЗКА =====
     if not query_text:
         results = [
             InlineQueryResultArticle(
@@ -270,13 +269,11 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer(results, cache_time=60)
         return
 
-    # ===== УБИРАЕМ trig. ЕСЛИ ЕСТЬ =====
     if query_text.lower().startswith("trig."):
         query_text = query_text[5:].strip()
 
     parts = query_text.split(" ", 1)
 
-    # ===== ТОЛЬКО ДЕЙСТВИЕ, БЕЗ ПОЛУЧАТЕЛЯ =====
     if len(parts) < 2:
         action_prefix = parts[0].lower()
         results = []
@@ -305,13 +302,11 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer(results, cache_time=60)
         return
 
-    # ===== ДЕЙСТВИЕ + ПОЛУЧАТЕЛЬ =====
     action = parts[0].lower()
     target_input = parts[1].strip()
     if target_input.startswith("@"):
         target_input = target_input[1:]
 
-    # Проверка на себя
     if update.effective_user.username and target_input == update.effective_user.username:
         await update.inline_query.answer([
             InlineQueryResultArticle(
@@ -322,7 +317,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=0)
         return
 
-    # Проверка на бота
     if target_input.lower() in ("dotbotrpg_bot", "dotbotrpg"):
         await update.inline_query.answer([
             InlineQueryResultArticle(
@@ -422,7 +416,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     state = context.user_data
-    if state.get("creating_action"):
+    
+    if state.get("creating_action") and state["creating_action"].get("step"):
         await create_action_input(update, context)
     elif state.get("changing_name"):
         await handle_name_input(update, context)
@@ -432,6 +427,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await give_premium_input(update, context)
     elif state.get("removing_premium"):
         await remove_premium_input(update, context)
+    elif state.get("creating_action_emoji"):
+        await handle_emoji_input(update, context)
 
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -826,7 +823,6 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
     elif data["step"] == "male_response":
-        # Приводим к правильному регистру
         text = normalize_username_placeholders(text)
         if "Username1" not in text or "Username2" not in text:
             await update.message.reply_text("❌ В ответе должны быть <b>Username1</b> и <b>Username2</b>", parse_mode="HTML")
