@@ -1,15 +1,21 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder, InlineQueryHandler, MessageHandler, filters
+import os
 import sqlite3
 from datetime import datetime, timedelta
 import asyncio
 
-TOKEN = "8765639328:AAFk1v5PnqcnqOqk3N7Xbugquy8MT3BBr_U"
-CREATOR_ID = 8269156736
-TELEGRAM_API_PROXY = None
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQueryResultArticle, InputTextMessageContent
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder, InlineQueryHandler, MessageHandler, filters
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# ===== КОНФИГУРАЦИЯ =====
+TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAFk1v5PnqcnqOqk3N7Xbugquy8MT3BBr_U")
+CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
+TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
+
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
@@ -36,11 +42,22 @@ DEFAULT_ACTIONS = {
     "попросить прощения": {"male": "попросил прощения у", "female": "попросила прощения у", "emoji": "🥺"}
 }
 
+# ===== ИНДЕКСЫ БД =====
+U_ID = 0
+U_FIRST_NAME = 1
+U_GENDER = 2
+U_CUSTOM_NAME = 3
+U_ROLE = 4
+U_IS_PREMIUM = 5
+U_PREMIUM_UNTIL = 6
+U_REGISTERED_AT = 7
+PAGE_SIZE = 4
+
 # ===== БАЗА ДАННЫХ =====
 def init_db():
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
+    c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         first_name TEXT,
         gender TEXT DEFAULT 'male',
@@ -49,318 +66,370 @@ def init_db():
         is_premium BOOLEAN DEFAULT FALSE,
         premium_until TIMESTAMP NULL,
         registered_at TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS allowed_users (
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS allowed_users (
         user_id INTEGER PRIMARY KEY,
         added_by INTEGER,
         added_at TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS custom_actions (
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS custom_actions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         owner_id INTEGER,
-        trigger TEXT,
+        trigger TEXT UNIQUE,
         response_male TEXT,
         response_female TEXT,
         emoji TEXT DEFAULT '',
         uses INTEGER DEFAULT 0,
         created_at TIMESTAMP
-    )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS action_logs (
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS action_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         action_name TEXT,
         target_name TEXT,
         used_at TIMESTAMP
-    )''')
-    c.execute('''INSERT OR IGNORE INTO users (user_id, first_name, role, registered_at)
-        VALUES (?, ?, ?, ?)''', (CREATOR_ID, "𝓜𝓪𝓭𝓪𝓶", "creator", datetime.now()))
-    c.execute('''INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
-        VALUES (?, ?, ?)''', (CREATOR_ID, CREATOR_ID, datetime.now()))
+    )""")
+    c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, role, registered_at)
+        VALUES (?, ?, ?, ?, ?)""", (CREATOR_ID, "𝓜𝓪𝓭𝓪𝓶", "female", "creator", datetime.now()))
+    c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
+        VALUES (?, ?, ?)""", (CREATOR_ID, CREATOR_ID, datetime.now()))
     conn.commit()
     conn.close()
     print("✅ База данных инициализирована")
 
 def get_user(user_id):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
+    c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = c.fetchone()
     conn.close()
     return user
 
-def register_user(user_id, first_name, gender='male'):
-    conn = sqlite3.connect('dotbot.db')
+def register_user(user_id, first_name, gender="male"):
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('INSERT OR IGNORE INTO users (user_id, first_name, gender, registered_at) VALUES (?, ?, ?, ?)',
-              (user_id, first_name, gender, datetime.now()))
+    c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, registered_at)
+        VALUES (?, ?, ?, ?)""", (user_id, first_name, gender, datetime.now()))
     conn.commit()
     conn.close()
 
 def update_user_gender(user_id, gender):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('UPDATE users SET gender = ? WHERE user_id = ?', (gender, user_id))
+    c.execute("UPDATE users SET gender = ? WHERE user_id = ?", (gender, user_id))
     conn.commit()
     conn.close()
 
 def update_user_name(user_id, name):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('UPDATE users SET custom_name = ? WHERE user_id = ?', (name, user_id))
+    c.execute("UPDATE users SET custom_name = ? WHERE user_id = ?", (name, user_id))
     conn.commit()
     conn.close()
 
 def is_trusted(user_id):
     if user_id == CREATOR_ID:
         return True
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT 1 FROM allowed_users WHERE user_id = ?', (user_id,))
+    c.execute("SELECT 1 FROM allowed_users WHERE user_id = ?", (user_id,))
     result = c.fetchone()
     conn.close()
     return result is not None
 
+def is_creator(user_id):
+    return user_id == CREATOR_ID
+
 def get_custom_actions():
-    conn = sqlite3.connect('dotbot.db')
+    """Только действия Создателя"""
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions')
+    c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
     actions = c.fetchall()
     conn.close()
     return actions
 
-def add_custom_action(owner_id, trigger, response_male, response_female, emoji=''):
-    conn = sqlite3.connect('dotbot.db')
+def add_custom_action(owner_id, trigger, response_male, response_female, emoji=""):
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('INSERT INTO custom_actions (owner_id, trigger, response_male, response_female, emoji, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-              (owner_id, trigger, response_male, response_female, emoji, datetime.now()))
+    c.execute("""INSERT INTO custom_actions (owner_id, trigger, response_male, response_female, emoji, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)""", (CREATOR_ID, trigger.lower(), response_male, response_female, emoji, datetime.now()))
     conn.commit()
     conn.close()
 
 def delete_custom_action(action_id):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('DELETE FROM custom_actions WHERE id = ?', (action_id,))
+    c.execute("DELETE FROM custom_actions WHERE id = ?", (action_id,))
     conn.commit()
     conn.close()
 
 def get_user_actions_count(user_id):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?', (user_id,))
+    c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
     count = c.fetchone()[0]
     conn.close()
     return count
 
 def get_allowed_users():
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT user_id FROM allowed_users')
+    c.execute("SELECT user_id FROM allowed_users")
     users = c.fetchall()
     conn.close()
     return [u[0] for u in users]
 
 def add_allowed_user(user_id, added_by):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at) VALUES (?, ?, ?)',
-              (user_id, added_by, datetime.now()))
+    c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
+        VALUES (?, ?, ?)""", (user_id, added_by, datetime.now()))
     conn.commit()
     conn.close()
 
 def remove_allowed_user(user_id):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('DELETE FROM allowed_users WHERE user_id = ?', (user_id,))
+    c.execute("DELETE FROM allowed_users WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
 def get_premium_users():
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT user_id, premium_until FROM users WHERE is_premium = TRUE')
+    c.execute("SELECT user_id, premium_until FROM users WHERE is_premium = TRUE")
     users = c.fetchall()
     conn.close()
     return users
 
 def set_premium(user_id, until=None):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('UPDATE users SET is_premium = TRUE, premium_until = ? WHERE user_id = ?', (until, user_id))
+    c.execute("""UPDATE users SET is_premium = TRUE, premium_until = ? WHERE user_id = ?""", (until, user_id))
     conn.commit()
     conn.close()
 
 def remove_premium(user_id):
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('UPDATE users SET is_premium = FALSE, premium_until = NULL WHERE user_id = ?', (user_id,))
+    c.execute("""UPDATE users SET is_premium = FALSE, premium_until = NULL WHERE user_id = ?""", (user_id,))
+    conn.commit()
+    conn.close()
+
+def log_action(user_id, action_name, target_name):
+    conn = sqlite3.connect("dotbot.db")
+    c = conn.cursor()
+    c.execute("""INSERT INTO action_logs (user_id, action_name, target_name, used_at)
+        VALUES (?, ?, ?, ?)""", (user_id, action_name, target_name, datetime.now()))
     conn.commit()
     conn.close()
 
 def check_access(user_id):
     return user_id == CREATOR_ID or is_trusted(user_id)
 
-# ===== ПОЛУЧЕНИЕ ИМЕНИ ПОЛЬЗОВАТЕЛЯ =====
-async def get_user_name(user_id):
-    user = get_user(user_id)
-    if user and user[3]:
-        return user[3]
-    if user and user[1]:
-        return user[1]
-    return str(user_id)
+# ===== УТИЛИТЫ =====
+def _fmt_name(name, user_id):
+    safe_name = name.replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+    return f"[{safe_name}](tg://user?id={user_id})"
 
-# ===== ИНЛАЙН-РЕЖИМ (ИСПРАВЛЕН — ТЕПЕРЬ ИМЯ) =====
+def _build_menu_text(title, lines):
+    text = f"🌙 <b>{title}</b>\n"
+    text += "━" * 16 + "\n"
+    for line in lines:
+        text += line + "\n"
+    return text.rstrip("\n")
+
+# ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
-    
+
     if not check_access(user_id):
         await update.inline_query.answer([], cache_time=0)
         return
-    
+
     if not query_text:
-        results = [InlineQueryResultArticle(
-            id="help",
-            title="🌙 DotBotRPG",
-            description="Напишите действие и @username",
-            input_message_content=InputTextMessageContent(
-                "🌙 <b>DotBotRPG</b>\nНапишите действие и @username\n\nПример: Обнять @petya",
-                parse_mode="HTML"
+        results = [
+            InlineQueryResultArticle(
+                id="help",
+                title="🌙 DotBotRPG",
+                description="Введите trig. <действие> @username",
+                input_message_content=InputTextMessageContent(
+                    "🌙 <b>DotBotRPG</b>\nВведите <code>trig. &lt;действие&gt; @username</code>",
+                    parse_mode="HTML"
+                )
             )
-        )]
-        await update.inline_query.answer(results, cache_time=60)
-        return
-    
-    # Убираем trig. если есть
-    if query_text.lower().startswith("trig."):
-        query_text = query_text[5:].strip()
-    
-    parts = query_text.split(" ", 1)
-    if len(parts) < 2:
-        results = []
+        ]
         for action in ["обнять", "поцеловать", "ударить", "погладить"]:
-            display = action.capitalize()
             results.append(InlineQueryResultArticle(
                 id=action,
-                title=display,
-                description=f"{display} @username",
-                input_message_content=InputTextMessageContent(f"{display} @username")
+                title=action.capitalize(),
+                description=f"Пример: {action.capitalize()} @username",
+                input_message_content=InputTextMessageContent(f"{action.capitalize()} @username")
             ))
-        await update.inline_query.answer(results[:5], cache_time=60)
+        await update.inline_query.answer(results, cache_time=60)
         return
-    
+
+    if query_text.lower().startswith("trig."):
+        query_text = query_text[5:].strip()
+
+    parts = query_text.split(" ", 1)
+
+    if len(parts) < 2:
+        action_prefix = parts[0].lower()
+        results = []
+        all_actions = list(DEFAULT_ACTIONS.keys())
+        custom = get_custom_actions()
+        all_actions += [c[1] for c in custom]
+        matched = [a for a in all_actions if a.startswith(action_prefix)]
+        matched = list(dict.fromkeys(matched))
+        for action in matched[:5]:
+            emoji = DEFAULT_ACTIONS.get(action, {}).get("emoji", "")
+            results.append(InlineQueryResultArticle(
+                id=action,
+                title=f"{emoji} {action.capitalize()}",
+                description=f"{action.capitalize()} @username",
+                input_message_content=InputTextMessageContent(f"{action.capitalize()} @username")
+            ))
+        if not results:
+            results = [InlineQueryResultArticle(
+                id="notfound",
+                title="🤖 Ничего не найдено",
+                description="Попробуйте: обнять, поцеловать, ударить...",
+                input_message_content=InputTextMessageContent(
+                    "🤖 Такого действия нет!\\n\\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                )
+            )]
+        await update.inline_query.answer(results, cache_time=60)
+        return
+
     action = parts[0].lower()
     target_input = parts[1].strip()
     if target_input.startswith("@"):
         target_input = target_input[1:]
-    
-    # Проверка на себя
-    if target_input == update.effective_user.username:
-        results = [InlineQueryResultArticle(
-            id="self",
-            title="😅 Нельзя на себя!",
-            input_message_content=InputTextMessageContent("😅 Нельзя сделать это на самого себя!")
-        )]
-        await update.inline_query.answer(results, cache_time=0)
+
+    if update.effective_user.username and target_input == update.effective_user.username:
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id="self",
+                title="😅 Нельзя на себя!",
+                input_message_content=InputTextMessageContent("😅 Нельзя сделать это на самого себя!")
+            )
+        ], cache_time=0)
         return
-    
-    # Проверка на бота
-    if target_input == "DotBotRPG_bot":
-        results = [InlineQueryResultArticle(
-            id="bot",
-            title="🤖 Я бот!",
-            input_message_content=InputTextMessageContent("🤖 Я всего лишь бот, но спасибо за внимание! 💜")
-        )]
-        await update.inline_query.answer(results, cache_time=0)
+
+    if target_input.lower() in ("dotbotrpg_bot", "dotbotrpg"):
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id="bot",
+                title="🤖 Я бот!",
+                input_message_content=InputTextMessageContent("🤖 Я всего лишь бот, но спасибо за внимание! 💜")
+            )
+        ], cache_time=0)
         return
-    
-    # Получаем отправителя
+
     user = get_user(user_id)
     if not user:
-        results = [InlineQueryResultArticle(
-            id="nouser",
-            title="❌ Зарегистрируйтесь!",
-            description="Напишите /start",
-            input_message_content=InputTextMessageContent("❌ Вы не зарегистрированы!\nНапишите <b>/start</b>", parse_mode="HTML")
-        )]
-        await update.inline_query.answer(results, cache_time=60)
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id="nouser",
+                title="❌ Зарегистрируйтесь!",
+                description="Напишите /start",
+                input_message_content=InputTextMessageContent(
+                    "❌ Вы не зарегистрированы!\\nНапишите <b>/start</b>", parse_mode="HTML"
+                )
+            )
+        ], cache_time=60)
         return
-    
-    sender_gender = user[2] if user else 'male'
-    sender_name = user[3] if user and user[3] else user[1] if user else update.effective_user.first_name
-    
-    # ===== ПОЛУЧАЕМ НАСТОЯЩЕЕ ИМЯ ЦЕЛИ (НЕ USERNAME!) =====
+
+    sender_gender = user[U_GENDER] if user else "male"
+    sender_name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME] or update.effective_user.first_name or "Пользователь"
+
     target_name = target_input
+    target_id = None
     try:
-        target_user = await context.bot.get_chat(f"@{target_input}")
-        if target_user:
-            if target_user.first_name:
-                target_name = target_user.first_name
-                if target_user.last_name:
-                    target_name += " " + target_user.last_name
-            elif target_user.title:
-                target_name = target_user.title
-    except Exception as e:
-        target_name = target_input
-    
-    # Проверяем встроенные действия
+        chat = await context.bot.get_chat(f"@{target_input}")
+        if chat:
+            target_id = chat.id
+            target_name = chat.first_name or ""
+            if chat.last_name:
+                target_name += " " + chat.last_name
+            target_name = target_name.strip() or target_input
+    except Exception:
+        pass
+
+    sender_link = _fmt_name(sender_name, user_id)
+    target_link = _fmt_name(target_name, target_id) if target_id else target_name
+
+    response = None
+    action_found = None
+
     if action in DEFAULT_ACTIONS:
         data = DEFAULT_ACTIONS[action]
-        verb = data['male'] if sender_gender == 'male' else data['female']
-        emoji = data['emoji']
-        response = f"{emoji} {sender_name} {verb} {target_name}"
-        results = [InlineQueryResultArticle(
-            id=action,
-            title=f"{action.capitalize()} → {target_name}",
-            description=response,
-            input_message_content=InputTextMessageContent(response)
-        )]
-        await update.inline_query.answer(results, cache_time=0)
-        return
-    
-    # Проверяем кастомные
-    custom = get_custom_actions()
-    for c in custom:
-        if c[1].lower() == action:
-            verb = c[2] if sender_gender == 'male' else c[3]
-            emoji = c[4] if c[4] else ""
-            response = f"{emoji} {sender_name} {verb} {target_name}".strip()
-            results = [InlineQueryResultArticle(
-                id=f"custom_{action}",
+        verb = data["male"] if sender_gender == "male" else data["female"]
+        emoji = data["emoji"]
+        response = f"{emoji} {sender_link} {verb} {target_link}"
+        action_found = action
+
+    if not response:
+        custom = get_custom_actions()
+        for c in custom:
+            if c[1].lower() == action:
+                template = c[2] if sender_gender == "male" else c[3]
+                emoji = c[4] or ""
+                template = template.replace("Username1", sender_link)
+                template = template.replace("Username2", target_link)
+                response = f"{emoji} {template}".strip()
+                action_found = c[1]
+                conn = sqlite3.connect("dotbot.db")
+                conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
+                conn.commit()
+                conn.close()
+                break
+
+    if response:
+        log_action(user_id, action_found, target_name)
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id=action,
                 title=f"{action.capitalize()} → {target_name}",
-                description=response,
-                input_message_content=InputTextMessageContent(response)
-            )]
-            await update.inline_query.answer(results, cache_time=0)
-            return
-    
-    results = [InlineQueryResultArticle(
-        id="notfound",
-        title="🤖 Такого действия нет!",
-        description="Попробуйте: обнять, поцеловать, ударить, погладить",
-        input_message_content=InputTextMessageContent(
-            "🤖 Такого действия нет!\n\nДоступные действия:\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                description=response.replace("[", "").replace("]", "").replace("tg://user?id=", ""),
+                input_message_content=InputTextMessageContent(response, parse_mode="Markdown")
+            )
+        ], cache_time=0)
+        return
+
+    await update.inline_query.answer([
+        InlineQueryResultArticle(
+            id="notfound",
+            title="🤖 Такого действия нет!",
+            description="Попробуйте: обнять, поцеловать, ударить, погладить",
+            input_message_content=InputTextMessageContent(
+                "🤖 Такого действия нет!\\n\\nДоступные действия:\\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+            )
         )
-    )]
-    await update.inline_query.answer(results, cache_time=60)
+    ], cache_time=60)
 
 # ===== ОБРАБОТЧИК ТЕКСТА =====
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
         return
-    
-    if context.user_data.get('creating_action'):
+
+    state = context.user_data
+    if state.get("creating_action"):
         await create_action_input(update, context)
-    elif context.user_data.get('changing_name'):
+    elif state.get("changing_name"):
         await handle_name_input(update, context)
-    elif context.user_data.get('adding_user'):
+    elif state.get("adding_user"):
         await add_user_input(update, context)
-    elif context.user_data.get('giving_premium'):
+    elif state.get("giving_premium"):
         await give_premium_input(update, context)
-    elif context.user_data.get('removing_premium'):
+    elif state.get("removing_premium"):
         await remove_premium_input(update, context)
 
-# ===== КОМАНДЫ (МНОГО ПУСТЫХ СТРОК) =====
+# ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
@@ -371,19 +440,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("👦 Мужской", callback_data="gender_male"),
             InlineKeyboardButton("👧 Женский", callback_data="gender_female")
         ]]
-        await update.message.reply_text(
-            "🌙 <b>Добро пожаловать в DotBotRPG</b> 🌙\n"
-            "\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            "\n"
-            "✨ Ночной мир RPG ждёт тебя\n"
-            "🤝 Взаимодействуй с другими\n"
-            "💫 Создавай свои действия\n"
-            "\n"
-            "⬇️ <b>Выберите свой пол:</b>",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+        text = _build_menu_text(
+            "Добро пожаловать в DotBotRPG",
+            [
+                "✨ Ночной мир RPG ждёт тебя",
+                "🤝 Взаимодействуй с другими",
+                "💫 Создавай свои действия",
+                "",
+                "⬇️ <b>Выберите свой пол:</b>"
+            ]
         )
+        await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         await show_main_menu(update, context)
 
@@ -394,41 +461,35 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(user_id)
     if not user:
         return
-    name = user[3] if user[3] else user[1]
-    role = user[5] if user else 'user'
-    
-    keyboard = []
-    if role == 'creator':
+    name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME]
+    role = user[U_ROLE]
+
+    if role == "creator":
         keyboard = [
-            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions")],
-            [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action")],
-            [InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("👥 Пользователи", callback_data="users")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions"),
+             InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
+             InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
+            [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions")],
-            [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
+             InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
-    
-    await update.message.reply_text(
-        f"🌙 <b>DotBotRPG</b> 🌙\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"👋 <b>Привет, {name}!</b>\n"
-        f"\n"
-        f"📱 <b>Главное меню</b>\n"
-        f"\n"
-        f"⬇️ Выберите действие:\n"
-        f"\n",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+
+    text = _build_menu_text(
+        "DotBotRPG — Главное меню",
+        [
+            f"👋 Привет, <b>{name}</b>!",
+            "",
+            "⬇️ Выберите действие:"
+        ]
     )
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def show_main_menu_from_query(query):
     user_id = query.from_user.id
@@ -439,41 +500,35 @@ async def show_main_menu_from_query(query):
     if not user:
         await query.edit_message_text("❌ Ошибка")
         return
-    name = user[3] if user[3] else user[1]
-    role = user[5] if user else 'user'
-    
-    keyboard = []
-    if role == 'creator':
+    name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME]
+    role = user[U_ROLE]
+
+    if role == "creator":
         keyboard = [
-            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions")],
-            [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action")],
-            [InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("👥 Пользователи", callback_data="users")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions"),
+             InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
+             InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
+            [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions")],
-            [InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
-            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
+             InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
+            [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
-    
-    await query.edit_message_text(
-        f"🌙 <b>DotBotRPG</b> 🌙\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"👋 <b>Привет, {name}!</b>\n"
-        f"\n"
-        f"📱 <b>Главное меню</b>\n"
-        f"\n"
-        f"⬇️ Выберите действие:\n"
-        f"\n",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+
+    text = _build_menu_text(
+        "DotBotRPG — Главное меню",
+        [
+            f"👋 Привет, <b>{name}</b>!",
+            "",
+            "⬇️ Выберите действие:"
+        ]
     )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ===== НАСТРОЙКИ =====
 async def settings_menu(query):
@@ -484,34 +539,37 @@ async def settings_menu(query):
     user = get_user(user_id)
     if not user:
         return
-    gender = "Мужской" if user[2] == 'male' else "Женский"
-    name = user[3] if user[3] else user[1]
-    role = "👑 Создатель" if user[5] == 'creator' else "⭐ Премиум" if user[6] else "🔰 Бесплатный"
+    gender = "Мужской" if user[U_GENDER] == "male" else "Женский"
+    name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME]
+    role = user[U_ROLE]
+    is_prem = user[U_IS_PREMIUM]
+    prem_until = user[U_PREMIUM_UNTIL]
     actions_count = get_user_actions_count(user_id)
-    max_actions = 999 if user[5] == 'creator' else 25 if user[6] else 5
-    
-    text = f"⚙️ <b>Настройки</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
-    text += f"👤 <b>Имя:</b> {name}\n"
-    text += f"⚧ <b>Пол:</b> {gender}\n"
-    text += f"📊 <b>Статус:</b> {role}"
-    if user[5] != 'creator':
-        text += f"\n📊 <b>Действий:</b> {actions_count}/{max_actions}"
-    if user[6] and user[7]:
-        text += f"\n📅 <b>Активен до:</b> {user[7][:10]}"
-    elif user[6]:
-        text += "\n📅 <b>Активен:</b> навсегда"
-    text += f"\n"
-    
+    max_actions = 999 if role == "creator" else 25 if is_prem else 5
+
+    role_label = "👑 Создатель" if role == "creator" else "⭐ Премиум" if is_prem else "🔰 Бесплатный"
+
+    lines = [
+        f"👤 <b>Имя:</b> {name}",
+        f"⚧ <b>Пол:</b> {gender}",
+        f"📊 <b>Статус:</b> {role_label}"
+    ]
+    if role != "creator":
+        lines.append(f"📊 <b>Действий:</b> {actions_count}/{max_actions}")
+    if is_prem and prem_until:
+        lines.append(f"📅 <b>Активен до:</b> {prem_until[:10]}")
+    elif is_prem:
+        lines.append("📅 <b>Активен:</b> навсегда")
+
+    text = _build_menu_text("Настройки", lines)
+
     keyboard = []
-    if user[6] or user[5] == 'creator':
+    if is_prem or role == "creator":
         keyboard.append([InlineKeyboardButton("✏️ Изменить имя", callback_data="change_name")])
     keyboard.append([InlineKeyboardButton("🔄 Сменить пол", callback_data="change_gender")])
     keyboard.append([InlineKeyboardButton("📊 Статистика", callback_data="stats")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-    
+
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ===== СМЕНА ИМЕНИ =====
@@ -522,51 +580,50 @@ async def change_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     user = get_user(user_id)
-    if not user or (not user[6] and user[5] != 'creator'):
+    if not user or (not user[U_IS_PREMIUM] and user[U_ROLE] != "creator"):
         await query.edit_message_text("🔒 Смена имени доступна только в Премиум-версии.")
         return
-    
-    await query.edit_message_text(
-        "✏️ <b>Введите новое имя</b>\n"
-        "\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "\n"
-        "Максимум 64 символа\n"
-        "\n"
-        "Напишите /cancel для отмены",
-        parse_mode="HTML"
+
+    text = _build_menu_text(
+        "Введите новое имя",
+        [
+            "Максимум 64 символа",
+            "",
+            "Напишите /cancel для отмены"
+        ]
     )
-    context.user_data['changing_name'] = True
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["changing_name"] = True
 
 async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
         return
-    if not context.user_data.get('changing_name'):
+    if not context.user_data.get("changing_name"):
         return
     new_name = update.message.text.strip()
-    
+
     if new_name == "/cancel":
-        context.user_data['changing_name'] = False
+        context.user_data["changing_name"] = False
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
-    
+
     if len(new_name) > 64:
         await update.message.reply_text("❌ Имя не может быть длиннее 64 символов.")
         return
     if not new_name:
         await update.message.reply_text("❌ Имя не может быть пустым.")
         return
-    
+
     user = get_user(user_id)
-    if not user or (not user[6] and user[5] != 'creator'):
+    if not user or (not user[U_IS_PREMIUM] and user[U_ROLE] != "creator"):
         await update.message.reply_text("🔒 Смена имени доступна только в Премиум-версии.")
         return
-    
+
     update_user_name(user_id, new_name)
-    context.user_data['changing_name'] = False
-    await update.message.reply_text(f"✅ Имя изменено на <b>\"{new_name}\"</b>!", parse_mode="HTML")
+    context.user_data["changing_name"] = False
+    await update.message.reply_text(f"✅ Имя изменено на <b>&quot;{new_name}&quot;</b>!", parse_mode="HTML")
     await show_main_menu(update, context)
 
 # ===== СМЕНА ПОЛА =====
@@ -599,31 +656,30 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    conn = sqlite3.connect('dotbot.db')
+    conn = sqlite3.connect("dotbot.db")
     c = conn.cursor()
-    c.execute('SELECT COUNT(*) FROM custom_actions')
+    c.execute("SELECT COUNT(*) FROM custom_actions")
     total_actions = c.fetchone()[0]
-    c.execute('SELECT COUNT(*) FROM action_logs')
+    c.execute("SELECT COUNT(*) FROM action_logs")
     total_uses = c.fetchone()[0]
-    c.execute('SELECT action_name, COUNT(*) FROM action_logs GROUP BY action_name ORDER BY COUNT(*) DESC LIMIT 5')
+    c.execute("""SELECT action_name, COUNT(*) FROM action_logs
+        GROUP BY action_name ORDER BY COUNT(*) DESC LIMIT 5""")
     top_actions = c.fetchall()
     conn.close()
-    
-    text = f"📊 <b>Статистика</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
-    text += f"📦 <b>Всего действий:</b> {total_actions}\n"
-    text += f"⚡ <b>Всего использований:</b> {total_uses}\n"
-    text += f"\n"
-    text += f"🏆 <b>Популярные действия:</b>\n"
+
+    lines = [
+        f"📦 <b>Всего действий:</b> {total_actions}",
+        f"⚡ <b>Всего использований:</b> {total_uses}",
+        "",
+        "🏆 <b>Популярные действия:</b>"
+    ]
     if top_actions:
         for i, (name, count) in enumerate(top_actions, 1):
-            text += f"{i}. {name.capitalize()} — {count} раз\n"
+            lines.append(f"{i}. {name.capitalize()} — {count} раз")
     else:
-        text += "Пока нет данных."
-    text += f"\n"
-    
+        lines.append("Пока нет данных.")
+
+    text = _build_menu_text("Статистика", lines)
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="settings")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -633,32 +689,30 @@ async def all_actions_menu(query):
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    
-    text = f"📋 <b>Доступные действия</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
-    text += f"🔹 <b>Встроенные (20 шт.):</b>\n"
-    
-    action_list = list(DEFAULT_ACTIONS.keys())
-    for i, action in enumerate(action_list, 1):
-        emoji = DEFAULT_ACTIONS[action]['emoji']
-        text += f"{i}. {action.capitalize()} {emoji}\n"
-    
+
+    lines = [f"🔹 <b>Встроенные ({len(DEFAULT_ACTIONS)} шт.):</b>"]
+    for i, action in enumerate(DEFAULT_ACTIONS.keys(), 1):
+        emoji = DEFAULT_ACTIONS[action]["emoji"]
+        lines.append(f"{i}. {action.capitalize()} {emoji}")
+
     custom = get_custom_actions()
     if custom:
-        text += f"\n🔸 <b>Кастомные ({len(custom)} шт.):</b>\n"
+        lines.append("")
+        lines.append(f"🔸 <b>Кастомные ({len(custom)} шт.):</b>")
         for c in custom:
-            text += f"• {c[1].capitalize()}\n"
+            lines.append(f"• {c[1].capitalize()}")
     else:
-        text += f"\n🔸 Кастомных действий пока нет.\n"
-    
-    text += f"\n📌 <b>Как использовать:</b>\n"
-    text += f"\n"
-    text += f"В любом чате напишите:\n"
-    text += f"<code>Обнять @username</code>\n"
-    text += f"\n"
-    
+        lines.append("")
+        lines.append("🔸 Кастомных действий пока нет.")
+
+    lines.extend([
+        "",
+        "📌 <b>Как использовать:</b>",
+        "В любом чате напишите:",
+        "<code>Обнять @username</code>"
+    ])
+
+    text = _build_menu_text("Доступные действия", lines)
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -668,28 +722,23 @@ async def my_actions_menu(query):
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    user = get_user(user_id)
-    if user[5] != 'creator':
+    if not is_creator(user_id):
         await query.edit_message_text("❌ Доступно только для Создателя")
         return
+
     custom = get_custom_actions()
     if not custom:
-        text = f"📋 <b>Ваши действия</b>\n"
-        text += f"\n"
-        text += f"━━━━━━━━━━━━━━━━━━━\n"
-        text += f"\n"
-        text += "У вас нет кастомных действий.\n"
-        text += "\n"
-        text += "Создайте первое через <b>➕ Создать действие</b>.\n"
-        text += "\n"
+        lines = [
+            "У вас нет кастомных действий.",
+            "",
+            'Создайте первое через <b>➕ Создать действие</b>.'
+        ]
     else:
-        text = f"📋 <b>Ваши действия</b>\n"
-        text += f"\n"
-        text += f"━━━━━━━━━━━━━━━━━━━\n"
-        text += f"\n"
+        lines = []
         for i, c in enumerate(custom, 1):
-            text += f"{i}. {c[1].capitalize()} (использовано: {c[5]} раз)\n"
-        text += f"\n"
+            lines.append(f"{i}. {c[1].capitalize()} (использовано: {c[5]} раз)")
+
+    text = _build_menu_text("Ваши действия", lines)
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -704,49 +753,45 @@ async def create_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not user:
         await query.edit_message_text("❌ Ошибка")
         return
-    max_actions = 999 if user[5] == 'creator' else 25 if user[6] else 5
+    max_actions = 999 if user[U_ROLE] == "creator" else 25 if user[U_IS_PREMIUM] else 5
     current = get_user_actions_count(user_id)
     if current >= max_actions:
-        if user[5] == 'creator':
-            limit_text = "безлимитный"
-        else:
-            limit_text = f"{max_actions}"
+        limit_text = "безлимитный" if user[U_ROLE] == "creator" else str(max_actions)
+        extra = "Оформите Премиум для доступа к 25 действиям." if not user[U_IS_PREMIUM] and user[U_ROLE] != "creator" else ""
         await query.edit_message_text(
-            f"❌ Вы достигли лимита в <b>{limit_text}</b> кастомных действий.\n"
-            f"\n"
-            f"{'Оформите Премиум для доступа к 25 действиям.' if not user[6] and user[5] != 'creator' else ''}",
+            f"❌ Вы достигли лимита в <b>{limit_text}</b> кастомных действий.\n\n{extra}",
             parse_mode="HTML"
         )
         return
-    await query.edit_message_text(
-        f"✏️ <b>Создание нового действия</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Введите название действия (триггер).\n"
-        f"Максимум 35 символов.\n"
-        f"\n"
-        f"Напишите /cancel для отмены",
-        parse_mode="HTML"
+
+    text = _build_menu_text(
+        "Создание нового действия",
+        [
+            "Введите название действия (триггер).",
+            "Максимум 35 символов.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
     )
-    context.user_data['creating_action'] = {'step': 'trigger'}
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["creating_action"] = {"step": "trigger"}
 
 async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
         return
-    if 'creating_action' not in context.user_data:
+    if "creating_action" not in context.user_data:
         return
-    data = context.user_data['creating_action']
+    data = context.user_data["creating_action"]
     text = update.message.text.strip()
-    
+
     if text == "/cancel":
-        context.user_data.pop('creating_action', None)
+        context.user_data.pop("creating_action", None)
         await update.message.reply_text("❌ Создание действия отменено.")
         await show_main_menu(update, context)
         return
-    
-    if data['step'] == 'trigger':
+
+    if data["step"] == "trigger":
         if not text:
             await update.message.reply_text("❌ Название не может быть пустым.")
             return
@@ -761,128 +806,173 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
             if c[1].lower() == text.lower():
                 await update.message.reply_text("⚠️ Действие с таким названием уже есть (кастомное).")
                 return
-        data['trigger'] = text
-        data['step'] = 'male_response'
+        data["trigger"] = text
+        data["step"] = "male_response"
         await update.message.reply_text(
-            f"✏️ <b>Ответ для МУЖСКОГО пола</b>\n"
-            f"\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"\n"
-            f"Используйте шаблон: <code>Username1 действие Username2</code>\n"
-            f"Можно добавлять свой текст после Username2.\n"
-            f"\n"
-            f"Пример: <code>Username1 чмокнул Username2 и убежал</code>",
+            _build_menu_text(
+                "Ответ для МУЖСКОГО пола",
+                [
+                    "Используйте шаблон: <code>Username1 [действие] Username2</code>",
+                    "Можно добавлять свой текст после Username2.",
+                    "",
+                    "Пример: <code>Username1 чмокнул Username2 и убежал</code>"
+                ]
+            ),
             parse_mode="HTML"
         )
-    
-    elif data['step'] == 'male_response':
+
+    elif data["step"] == "male_response":
         if "Username1" not in text or "Username2" not in text:
             await update.message.reply_text("❌ В ответе должны быть <b>Username1</b> и <b>Username2</b>", parse_mode="HTML")
             return
-        data['male_response'] = text
-        data['step'] = 'female_response'
+        data["male_response"] = text
+        data["step"] = "female_response"
         await update.message.reply_text(
-            f"✏️ <b>Ответ для ЖЕНСКОГО пола</b>\n"
-            f"\n"
-            f"━━━━━━━━━━━━━━━━━━━\n"
-            f"\n"
-            f"Используйте шаблон: <code>Username1 действие Username2</code>\n"
-            f"Можно добавлять свой текст после Username2.\n"
-            f"\n"
-            f"Пример: <code>Username1 чмокнула Username2 и убежала</code>",
+            _build_menu_text(
+                "Ответ для ЖЕНСКОГО пола",
+                [
+                    "Используйте шаблон: <code>Username1 [действие] Username2</code>",
+                    "Можно добавлять свой текст после Username2.",
+                    "",
+                    "Пример: <code>Username1 чмокнула Username2 и убежала</code>"
+                ]
+            ),
             parse_mode="HTML"
         )
-    
-    elif data['step'] == 'female_response':
+
+    elif data["step"] == "female_response":
         if "Username1" not in text or "Username2" not in text:
             await update.message.reply_text("❌ В ответе должны быть <b>Username1</b> и <b>Username2</b>", parse_mode="HTML")
             return
-        data['female_response'] = text
-        data['step'] = 'emoji'
+        data["female_response"] = text
+        data["step"] = "emoji"
         user = get_user(user_id)
-        if user[6] or user[5] == 'creator':
+        if user[U_IS_PREMIUM] or user[U_ROLE] == "creator":
             keyboard = [[InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_emoji")]]
             await update.message.reply_text(
-                f"✏️ <b>Выбор эмодзи</b>\n"
-                f"\n"
-                f"━━━━━━━━━━━━━━━━━━━\n"
-                f"\n"
-                f"Отправьте ОДИН эмодзи для этого действия.\n"
-                f"Или нажмите кнопку 'Пропустить'.",
+                _build_menu_text(
+                    "Выбор эмодзи",
+                    [
+                        "Отправьте ОДИН эмодзи для этого действия.",
+                        "Или нажмите кнопку 'Пропустить'."
+                    ]
+                ),
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+            context.user_data["creating_action_emoji"] = True
         else:
             await update.message.reply_text("🔒 Эмодзи доступны только в Премиум-версии. Пропускаем...")
-            data['emoji'] = ''
-            add_custom_action(user_id, data['trigger'], data['male_response'], data['female_response'], '')
-            context.user_data.pop('creating_action', None)
+            add_custom_action(user_id, data["trigger"], data["male_response"], data["female_response"], "")
+            context.user_data.pop("creating_action", None)
             await update.message.reply_text(
-                f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n"
-                f"\n"
+                f"✅ <b>Действие &quot;{data['trigger'].capitalize()}&quot; создано!</b>\n\n"
                 f"Теперь вы можете использовать его в чате:\n"
-                f"\n"
-                f"<code>@{update.effective_user.username} {data['trigger'].capitalize()} @username</code>",
+                f"<code>@{update.effective_user.username or 'username'} {data['trigger'].capitalize()} @username</code>",
                 parse_mode="HTML"
             )
             await show_main_menu(update, context)
 
+    elif data["step"] == "emoji":
+        try:
+            import emoji
+            if not emoji.is_emoji(text):
+                await update.message.reply_text("❌ Это не эмодзи. Отправьте один эмодзи или нажмите 'Пропустить'.")
+                return
+        except ImportError:
+            pass
+        if len(text) > 2:
+            await update.message.reply_text("❌ Нужно отправить ТОЛЬКО ОДИН эмодзи.")
+            return
+        data["emoji"] = text
+        add_custom_action(user_id, data["trigger"], data["male_response"], data["female_response"], text)
+        context.user_data.pop("creating_action", None)
+        context.user_data.pop("creating_action_emoji", None)
+        await update.message.reply_text(
+            f"✅ <b>Действие &quot;{data['trigger'].capitalize()}&quot; создано!</b>\n\n"
+            f"Теперь вы можете использовать его в чате:\n"
+            f"<code>@{update.effective_user.username or 'username'} {data['trigger'].capitalize()} @username</code>",
+            parse_mode="HTML"
+        )
+        await show_main_menu(update, context)
+
 async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    if 'creating_action' not in context.user_data:
+    if "creating_action" not in context.user_data:
         await query.edit_message_text("❌ Ошибка")
         return
-    data = context.user_data['creating_action']
-    data['emoji'] = ''
-    add_custom_action(user_id, data['trigger'], data['male_response'], data['female_response'], '')
-    context.user_data.pop('creating_action', None)
+    data = context.user_data["creating_action"]
+    add_custom_action(user_id, data["trigger"], data["male_response"], data["female_response"], "")
+    context.user_data.pop("creating_action", None)
+    context.user_data.pop("creating_action_emoji", None)
     await query.edit_message_text(
-        f"✅ <b>Действие \"{data['trigger'].capitalize()}\" создано!</b>\n"
-        f"\n"
+        f"✅ <b>Действие &quot;{data['trigger'].capitalize()}&quot; создано!</b>\n\n"
         f"Теперь вы можете использовать его в чате:\n"
-        f"\n"
-        f"<code>@{query.from_user.username} {data['trigger'].capitalize()} @username</code>",
+        f"<code>@{query.from_user.username or 'username'} {data['trigger'].capitalize()} @username</code>",
         parse_mode="HTML"
     )
     await show_main_menu_from_query(query)
 
-# ===== УДАЛЕНИЕ =====
+# ===== УДАЛЕНИЕ ДЕЙСТВИЙ (С ПАГИНАЦИЕЙ) =====
 async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    user = get_user(user_id)
-    if user[5] != 'creator':
-        await query.edit_message_text("❌ Доступно только для Создателя")
-        return
+    await show_delete_page(query, context, 1)
+
+async def show_delete_page(query, context, page):
     custom = get_custom_actions()
     if not custom:
         await query.edit_message_text("📋 У вас нет кастомных действий для удаления.")
         return
+
+    total = len(custom)
+    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+    if page < 1:
+        page = 1
+    if page > total_pages:
+        page = total_pages
+
+    start = (page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
+    page_actions = custom[start:end]
+
     keyboard = []
-    for c in custom:
+    for c in page_actions:
         keyboard.append([InlineKeyboardButton(f"🗑️ {c[1].capitalize()}", callback_data=f"delete_{c[0]}")])
+
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"delpage_{page-1}"))
+    nav_buttons.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="noop"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton("Вперёд ➡️", callback_data=f"delpage_{page+1}"))
+
+    if nav_buttons:
+        keyboard.append(nav_buttons)
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-    await query.edit_message_text(
-        f"🗑️ <b>Удаление действия</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Выберите действие для удаления:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+
+    context.user_data["delete_page"] = page
+    text = _build_menu_text(
+        "Удаление действия",
+        [
+            f"Страница {page}/{total_pages}",
+            "",
+            "Выберите действие:"
+        ]
     )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def delete_action_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     action_id = int(query.data.split("_")[1])
@@ -893,39 +983,42 @@ async def delete_action_confirm(update: Update, context: ContextTypes.DEFAULT_TY
             action_name = c[1]
             break
     delete_custom_action(action_id)
-    await query.edit_message_text(f"✅ <b>Действие '{action_name.capitalize()}' удалено!</b>", parse_mode="HTML")
-    await delete_action_start(update, context)
+    page = context.user_data.get("delete_page", 1)
+    await show_delete_page(query, context, page)
+
+async def delete_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    page = int(query.data.split("_")[1])
+    await show_delete_page(query, context, page)
 
 # ===== ПОЛЬЗОВАТЕЛИ =====
 async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    user = get_user(user_id)
-    if user[5] != 'creator':
-        await query.edit_message_text("❌ Доступно только для Создателя")
-        return
     allowed = get_allowed_users()
-    text = f"👥 <b>Доверенные пользователи</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
+    lines = ["👥 <b>Доверенные пользователи</b>"]
     if not allowed:
-        text += "Список пуст."
+        lines.append("Список пуст.")
     else:
         for i, uid in enumerate(allowed[:10], 1):
             u = get_user(uid)
-            name = u[1] if u else str(uid)
-            premium = "⭐ Премиум" if u and u[6] else "🔰 Бесплатный"
-            text += f"{i}. {name} (ID: {uid}) — {premium}\n"
+            name = u[U_FIRST_NAME] if u else str(uid)
+            premium = "⭐ Премиум" if u and u[U_IS_PREMIUM] else "🔰 Бесплатный"
+            lines.append(f"{i}. {name} (ID: {uid}) — {premium}")
         if len(allowed) > 10:
-            text += f"\n... и ещё {len(allowed) - 10} пользователей"
-    text += f"\n"
+            lines.append(f"... и ещё {len(allowed) - 10} пользователей")
+
+    text = _build_menu_text("Пользователи", lines)
     keyboard = [
-        [InlineKeyboardButton("➕ Добавить", callback_data="add_user")],
-        [InlineKeyboardButton("➖ Удалить", callback_data="remove_user")],
+        [InlineKeyboardButton("➕ Добавить", callback_data="add_user"),
+         InlineKeyboardButton("➖ Удалить", callback_data="remove_user")],
         [InlineKeyboardButton("🔙 Назад", callback_data="back")]
     ]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -933,30 +1026,29 @@ async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def add_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    await query.edit_message_text(
-        f"✏️ <b>Добавление пользователя</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Введите ID или @username пользователя.\n"
-        f"\n"
-        f"Напишите /cancel для отмены",
-        parse_mode="HTML"
+    text = _build_menu_text(
+        "Добавление пользователя",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
     )
-    context.user_data['adding_user'] = True
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["adding_user"] = True
 
 async def add_user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         return
-    if not context.user_data.get('adding_user'):
+    if not context.user_data.get("adding_user"):
         return
     text = update.message.text.strip()
     if text == "/cancel":
-        context.user_data.pop('adding_user', None)
+        context.user_data.pop("adding_user", None)
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
@@ -968,7 +1060,7 @@ async def add_user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             target = await context.bot.get_chat(f"@{text}")
             target_id = target.id
-    except:
+    except Exception:
         await update.message.reply_text("❌ Пользователь не найден.")
         return
     if target_id == CREATOR_ID:
@@ -978,14 +1070,14 @@ async def add_user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Этот пользователь уже имеет доступ.")
         return
     add_allowed_user(target_id, user_id)
-    context.user_data.pop('adding_user', None)
-    await update.message.reply_text(f"✅ Пользователь добавлен в доверенные!")
+    context.user_data.pop("adding_user", None)
+    await update.message.reply_text("✅ Пользователь добавлен в доверенные!")
     await show_main_menu(update, context)
 
 async def remove_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     allowed = get_allowed_users()
@@ -996,28 +1088,21 @@ async def remove_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for uid in allowed[:10]:
         u = get_user(uid)
-        name = u[1] if u else str(uid)
+        name = u[U_FIRST_NAME] if u else str(uid)
         keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"remove_{uid}")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-    await query.edit_message_text(
-        f"👥 <b>Удаление пользователя</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Выберите пользователя:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    text = _build_menu_text("Удаление пользователя", ["Выберите пользователя:"])
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def remove_user_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     target_id = int(query.data.split("_")[1])
     remove_allowed_user(target_id)
-    await query.edit_message_text(f"✅ Доступ отозван.")
+    await query.edit_message_text("✅ Доступ отозван.")
     await remove_user_start(update, context)
 
 # ===== ПРЕМИУМ =====
@@ -1030,18 +1115,17 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(user_id)
     if not user:
         return
-    if user[5] == 'creator':
+    if user[U_ROLE] == "creator":
         premium_users = get_premium_users()
         free_users = len(get_allowed_users()) - len(premium_users)
-        text = f"⭐ <b>Премиум-система</b>\n"
-        text += f"\n"
-        text += f"━━━━━━━━━━━━━━━━━━━\n"
-        text += f"\n"
-        text += f"👑 <b>Ваш статус:</b> Создатель\n"
-        text += f"📊 <b>Премиум-пользователей:</b> {len(premium_users)}\n"
-        text += f"📊 <b>Бесплатных пользователей:</b> {free_users}\n"
-        text += f"\n"
-        text += f"<b>Управление:</b>"
+        lines = [
+            "👑 <b>Ваш статус:</b> Создатель",
+            f"📊 <b>Премиум-пользователей:</b> {len(premium_users)}",
+            f"📊 <b>Бесплатных пользователей:</b> {free_users}",
+            "",
+            "<b>Управление:</b>"
+        ]
+        text = _build_menu_text("Премиум-система", lines)
         keyboard = [
             [InlineKeyboardButton("📋 Список премиум", callback_data="premium_list")],
             [InlineKeyboardButton("⭐ Выдать премиум", callback_data="give_premium")],
@@ -1050,36 +1134,34 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
         return
-    if user[6]:
-        text = f"⭐ <b>Премиум активен!</b>\n"
-        text += f"\n"
-        text += f"━━━━━━━━━━━━━━━━━━━\n"
-        text += f"\n"
-        text += f"👤 <b>Статус:</b> Премиум\n"
-        text += f"📊 <b>Действий создано:</b> {get_user_actions_count(user_id)} из 25\n"
-        text += f"✨ <b>Эмодзи:</b> доступны\n"
-        text += f"✏️ <b>Смена имени:</b> доступна"
-        if user[7]:
-            text += f"\n📅 <b>Активен до:</b> {user[7][:10]}"
+
+    if user[U_IS_PREMIUM]:
+        lines = [
+            "👤 <b>Статус:</b> Премиум",
+            f"📊 <b>Действий создано:</b> {get_user_actions_count(user_id)} из 25",
+            "✨ <b>Эмодзи:</b> доступны",
+            "✏️ <b>Смена имени:</b> доступна"
+        ]
+        if user[U_PREMIUM_UNTIL]:
+            lines.append(f"📅 <b>Активен до:</b> {user[U_PREMIUM_UNTIL][:10]}")
         else:
-            text += "\n📅 <b>Активен:</b> навсегда"
-        text += "\n"
-        text += "\nСпасибо, что поддерживаете проект! 💜"
+            lines.append("📅 <b>Активен:</b> навсегда")
+        lines.extend(["", "Спасибо, что поддерживаете проект! 💜"])
+        text = _build_menu_text("Ваш Премиум активен!", lines)
         keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     else:
-        text = f"⭐ <b>DotBotRPG Премиум</b>\n"
-        text += f"\n"
-        text += f"━━━━━━━━━━━━━━━━━━━\n"
-        text += f"\n"
-        text += f"🔓 <b>Что вы получите:</b>\n"
-        text += f"✅ 25 кастомных действий (вместо 5)\n"
-        text += f"✅ Эмодзи в действиях\n"
-        text += f"✅ Смена имени в настройках\n"
-        text += f"✅ Приоритетная поддержка\n"
-        text += f"\n"
-        text += f"💳 <b>Тарифы:</b>\n"
-        text += f"• 199 ₽ / месяц\n"
-        text += f"• 1 490 ₽ / навсегда"
+        lines = [
+            "🔓 <b>Что вы получите:</b>",
+            "✅ 25 кастомных действий (вместо 5)",
+            "✅ Эмодзи в действиях",
+            "✅ Смена имени в настройках",
+            "✅ Приоритетная поддержка",
+            "",
+            "💳 <b>Тарифы:</b>",
+            "• 199 ₽ / месяц",
+            "• 1 490 ₽ / навсегда"
+        ]
+        text = _build_menu_text("DotBotRPG Премиум", lines)
         keyboard = [
             [InlineKeyboardButton("💳 Оплатить 199 ₽ (месяц)", callback_data="pay_month")],
             [InlineKeyboardButton("💳 Оплатить 1 490 ₽ (навсегда)", callback_data="pay_forever")],
@@ -1090,53 +1172,49 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def premium_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     premium_users = get_premium_users()
     if not premium_users:
         await query.edit_message_text("📋 Премиум-пользователей нет.")
         return
-    text = f"📋 <b>Премиум-пользователи</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
+    lines = []
     for uid, until in premium_users:
         u = get_user(uid)
-        name = u[1] if u else str(uid)
+        name = u[U_FIRST_NAME] if u else str(uid)
         status = "навсегда" if until is None else until[:10]
-        text += f"• {name} — {status}\n"
-    text += f"\n"
+        lines.append(f"• {name} — {status}")
+    text = _build_menu_text("Премиум-пользователи", lines)
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="premium")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def give_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    await query.edit_message_text(
-        f"✏️ <b>Выдача премиум</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Введите ID или @username пользователя.\n"
-        f"\n"
-        f"Напишите /cancel для отмены",
-        parse_mode="HTML"
+    text = _build_menu_text(
+        "Выдача премиум",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
     )
-    context.user_data['giving_premium'] = True
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["giving_premium"] = True
 
 async def give_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         return
-    if not context.user_data.get('giving_premium'):
+    if not context.user_data.get("giving_premium"):
         return
     text = update.message.text.strip()
     if text == "/cancel":
-        context.user_data.pop('giving_premium', None)
+        context.user_data.pop("giving_premium", None)
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
@@ -1148,7 +1226,7 @@ async def give_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         else:
             target = await context.bot.get_chat(f"@{text}")
             target_id = target.id
-    except:
+    except Exception:
         await update.message.reply_text("❌ Пользователь не найден.")
         return
     keyboard = [
@@ -1156,17 +1234,13 @@ async def give_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("♾️ Навсегда", callback_data=f"premium_forever_{target_id}")],
         [InlineKeyboardButton("🔙 Назад", callback_data="premium")]
     ]
-    await update.message.reply_text(
-        f"⏳ <b>Выберите срок:</b>",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    context.user_data.pop('giving_premium', None)
+    await update.message.reply_text("⏳ <b>Выберите срок:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+    context.user_data.pop("giving_premium", None)
 
 async def give_premium_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     parts = query.data.split("_")
@@ -1183,30 +1257,29 @@ async def give_premium_confirm(update: Update, context: ContextTypes.DEFAULT_TYP
 async def remove_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    await query.edit_message_text(
-        f"✏️ <b>Отзыв премиум</b>\n"
-        f"\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"\n"
-        f"Введите ID или @username пользователя.\n"
-        f"\n"
-        f"Напишите /cancel для отмены",
-        parse_mode="HTML"
+    text = _build_menu_text(
+        "Отзыв премиум",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
     )
-    context.user_data['removing_premium'] = True
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["removing_premium"] = True
 
 async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         return
-    if not context.user_data.get('removing_premium'):
+    if not context.user_data.get("removing_premium"):
         return
     text = update.message.text.strip()
     if text == "/cancel":
-        context.user_data.pop('removing_premium', None)
+        context.user_data.pop("removing_premium", None)
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
@@ -1218,11 +1291,11 @@ async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             target = await context.bot.get_chat(f"@{text}")
             target_id = target.id
-    except:
+    except Exception:
         await update.message.reply_text("❌ Пользователь не найден.")
         return
     remove_premium(target_id)
-    context.user_data.pop('removing_premium', None)
+    context.user_data.pop("removing_premium", None)
     await update.message.reply_text("✅ Премиум отозван!")
     await show_main_menu(update, context)
 
@@ -1231,7 +1304,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    
+
     if data.startswith("gender_"):
         user_id = query.from_user.id
         if not check_access(user_id):
@@ -1265,6 +1338,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await delete_action_start(update, context)
     elif data.startswith("delete_"):
         await delete_action_confirm(update, context)
+    elif data.startswith("delpage_"):
+        await delete_page_handler(update, context)
     elif data == "users":
         await users_menu(update, context)
     elif data == "add_user":
@@ -1283,50 +1358,43 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await give_premium_confirm(update, context)
     elif data == "remove_premium":
         await remove_premium_start(update, context)
+    elif data == "noop":
+        pass
 
 # ===== HELP =====
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not check_access(user_id):
         return
-    text = f"🌙 <b>DotBotRPG — помощь</b>\n"
-    text += f"\n"
-    text += f"━━━━━━━━━━━━━━━━━━━\n"
-    text += f"\n"
-    text += f"📌 <b>Команды в ЛС:</b>\n"
-    text += f"/start — Главное меню\n"
-    text += f"/menu — Главное меню\n"
-    text += f"/settings — Настройки\n"
-    text += f"/custom — Создать кастомное действие\n"
-    text += f"/cancel — Отменить текущее действие\n"
-    text += f"/help — Помощь"
-    
-    if user_id == CREATOR_ID:
-        text += f"\n"
-        text += f"\n👑 <b>Команды Создателя:</b>\n"
-        text += f"/adduser — Добавить пользователя\n"
-        text += f"/removeuser — Удалить пользователя\n"
-        text += f"/userlist — Список доверенных\n"
-        text += f"/setpremium — Выдать премиум\n"
-        text += f"/removepremium — Забрать премиум\n"
-        text += f"/premiumlist — Список премиум"
-    
-    text += f"\n"
-    text += f"\n📌 <b>Встроенные действия (20 шт.):</b>\n"
-    text += f"\n"
-    
-    action_list = list(DEFAULT_ACTIONS.keys())
-    for i, action in enumerate(action_list, 1):
-        emoji = DEFAULT_ACTIONS[action]['emoji']
-        text += f"{i}. {action.capitalize()} {emoji}\n"
-    
-    text += f"\n📌 <b>Как использовать:</b>\n"
-    text += f"\n"
-    text += f"В любом чате: <code>Обнять @username</code>\n"
-    text += f"\n"
-    text += f"Пример: <code>Обнять @petya</code>\n"
-    text += f"\n"
-    
+    lines = [
+        "📌 <b>Команды в ЛС:</b>",
+        "/start — Главное меню",
+        "/menu — Главное меню",
+        "/settings — Настройки",
+        "/custom — Создать кастомное действие",
+        "/cancel — Отменить текущее действие",
+        "/help — Помощь"
+    ]
+    if is_creator(user_id):
+        lines.extend([
+            "",
+            "👑 <b>Команды Создателя:</b>",
+            "/adduser — Добавить пользователя",
+            "/removeuser — Удалить пользователя",
+            "/userlist — Список доверенных",
+            "/setpremium — Выдать премиум",
+            "/removepremium — Забрать премиум",
+            "/premiumlist — Список премиум"
+        ])
+    lines.extend([
+        "",
+        "📌 <b>Инлайн-режим (в чатах):</b>",
+        "@DotBotRPG_bot trig. <действие> @username",
+        "",
+        "📌 <b>Встроенные действия (20 шт.):</b>",
+        ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
+    ])
+    text = _build_menu_text("DotBotRPG — помощь", lines)
     await update.message.reply_text(text, parse_mode="HTML")
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1340,17 +1408,17 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     print("🚀 Инициализация базы данных...")
     init_db()
-    
+
     print("🔧 Создание приложения...")
     builder = ApplicationBuilder().token(TOKEN)
     if TELEGRAM_API_PROXY:
         builder = builder.base_url(TELEGRAM_API_PROXY)
     else:
         print("🌐 Прямое подключение к Telegram API")
-    
+
     builder = builder.connect_timeout(60).read_timeout(60).write_timeout(60)
     app = builder.build()
-    
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", start))
     app.add_handler(CommandHandler("help", help_command))
@@ -1358,7 +1426,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(InlineQueryHandler(inline_query))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-    
+
     print("=" * 50)
     print("🌙 DotBotRPG запущен!")
     print(f"👑 Создатель: {CREATOR_ID}")
@@ -1366,11 +1434,11 @@ async def main():
     print("=" * 50)
     print("✅ Бот готов к работе!")
     print("=" * 50)
-    
+
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    
+
     while True:
         await asyncio.sleep(1)
 
