@@ -235,10 +235,10 @@ def _fmt_name(name, user_id):
 
 def _build_menu_text(title, lines):
     text = f"🌙 <b>{title}</b>\n"
-    text += "━" * 16 + "\n"
+    text += "━" * 16 + "\n\n"
     for line in lines:
         text += line + "\n"
-    return text.rstrip("\n")
+    return text.rstrip("\n") + "\n\n"
 
 def normalize_username_placeholders(text):
     text = re.sub(r'(?i)Username1', 'Username1', text)
@@ -272,23 +272,79 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query_text.lower().startswith("trig."):
         query_text = query_text[5:].strip()
 
-    parts = query_text.split(" ", 1)
+    # ===== ИЩЕМ @username В КОНЦЕ =====
+    target_input = ""
+    action = query_text
+    custom = get_custom_actions()
 
-    if len(parts) < 2:
-        action_prefix = parts[0].lower()
-        results = []
-        all_actions = list(DEFAULT_ACTIONS.keys())
-        custom = get_custom_actions()
-        all_actions += [c[1] for c in custom]
-        matched = [a for a in all_actions if a.startswith(action_prefix)]
+    # Проверяем кастомные действия с пробелами
+    found_custom = False
+    for c in custom:
+        trigger = c[1]
+        if query_text.lower().startswith(trigger.lower()):
+            action = trigger
+            rest = query_text[len(trigger):].strip()
+            if rest.startswith("@"):
+                target_input = rest[1:]
+            else:
+                target_input = rest
+            found_custom = True
+            break
+
+    if not found_custom:
+        # Проверяем встроенные
+        parts = query_text.split(" ", 1)
+        if len(parts) > 1:
+            first_word = parts[0].lower()
+            if first_word in DEFAULT_ACTIONS:
+                action = first_word
+                rest = parts[1].strip()
+                if rest.startswith("@"):
+                    target_input = rest[1:]
+                else:
+                    target_input = rest
+            else:
+                action = parts[0]
+                if len(parts) > 1:
+                    if parts[1].startswith("@"):
+                        target_input = parts[1][1:]
+                    else:
+                        target_input = parts[1]
+        else:
+            action = query_text
+
+    # Если target всё ещё не найден — пробуем последнее слово с @
+    if not target_input:
+        words = query_text.split(" ")
+        for i, w in enumerate(words):
+            if w.startswith("@"):
+                target_input = w[1:]
+                action = " ".join(words[:i]).strip()
+                if not action and i > 0:
+                    action = " ".join(words[:i])
+                break
+
+    # ===== ПОИСК ДЕЙСТВИЙ (без @username) =====
+    if not target_input:
+        action_lower = action.lower()
+        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
+        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
         matched = list(dict.fromkeys(matched))
-        for action in matched[:5]:
-            emoji = DEFAULT_ACTIONS.get(action, {}).get("emoji", "")
+        results = []
+        for act in matched[:5]:
+            emoji = ""
+            if act in DEFAULT_ACTIONS:
+                emoji = DEFAULT_ACTIONS[act]["emoji"]
+            else:
+                for c in custom:
+                    if c[1] == act:
+                        emoji = c[4] or ""
+                        break
             results.append(InlineQueryResultArticle(
-                id=action,
-                title=f"{emoji} {action.capitalize()}",
-                description=f"{action.capitalize()} @username",
-                input_message_content=InputTextMessageContent(f"{action.capitalize()} @username")
+                id=act,
+                title=f"{emoji} {act.capitalize()}",
+                description=f"{act} @username",
+                input_message_content=InputTextMessageContent(f"{act} @username")
             ))
         if not results:
             results = [InlineQueryResultArticle(
@@ -302,33 +358,14 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer(results, cache_time=60)
         return
 
-    action = parts[0].lower()
-    target_input = parts[1].strip()
-    if target_input.startswith("@"):
-        target_input = target_input[1:]
-
-    if update.effective_user.username and target_input == update.effective_user.username:
-        await update.inline_query.answer([
-            InlineQueryResultArticle(
-                id="self",
-                title="😅 Нельзя на себя!",
-                input_message_content=InputTextMessageContent("😅 Нельзя сделать это на самого себя!")
-            )
-        ], cache_time=0)
-        return
-
-    if target_input.lower() in ("dotbotrpg_bot", "dotbotrpg"):
-        await update.inline_query.answer([
-            InlineQueryResultArticle(
-                id="bot",
-                title="🤖 Я бот!",
-                input_message_content=InputTextMessageContent("🤖 Я всего лишь бот, но спасибо за внимание! 💜")
-            )
-        ], cache_time=0)
-        return
-
+    # ===== ЕСТЬ ДЕЙСТВИЕ + ПОЛУЧАТЕЛЬ =====
+    sender_gender = "male"
+    sender_name = "Пользователь"
     user = get_user(user_id)
-    if not user:
+    if user:
+        sender_gender = user[U_GENDER] if user else "male"
+        sender_name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME] or update.effective_user.first_name or "Пользователь"
+    else:
         await update.inline_query.answer([
             InlineQueryResultArticle(
                 id="nouser",
@@ -341,9 +378,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
-    sender_gender = user[U_GENDER] if user else "male"
-    sender_name = user[U_CUSTOM_NAME] or user[U_FIRST_NAME] or update.effective_user.first_name or "Пользователь"
-
+    # Получаем имя цели
     target_name = target_input
     target_id = None
     try:
@@ -362,37 +397,38 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     response = None
     action_found = None
+    emoji = ""
+    is_custom = False
 
-    # ===== СНАЧАЛА ПРОВЕРЯЕМ КАСТОМНЫЕ (НОВЫЕ ДЕЙСТВИЯ) =====
-    custom = get_custom_actions()
+    # Проверяем кастомные
     for c in custom:
-        if c[1].lower() == action:
+        if c[1].lower() == action.lower():
+            action_found = c[1]
             template = c[2] if sender_gender == "male" else c[3]
             emoji = c[4] or ""
-            template = template.replace("Username1", sender_link)
-            template = template.replace("Username2", target_link)
-            response = f"{emoji} {template}".strip()
-            action_found = c[1]
+            is_custom = True
+            response = template.replace("Username1", sender_link).replace("Username2", target_link)
+            response = f"{emoji} {response}".strip()
             conn = sqlite3.connect("dotbot.db")
             conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
             conn.commit()
             conn.close()
             break
 
-    # ===== ПОТОМ ВСТРОЕННЫЕ =====
-    if not response and action in DEFAULT_ACTIONS:
-        data = DEFAULT_ACTIONS[action]
+    # Проверяем встроенные
+    if not response and action.lower() in DEFAULT_ACTIONS:
+        action_found = action.lower()
+        data = DEFAULT_ACTIONS[action_found]
         verb = data["male"] if sender_gender == "male" else data["female"]
         emoji = data["emoji"]
         response = f"{emoji} {sender_link} {verb} {target_link}"
-        action_found = action
 
     if response:
         log_action(user_id, action_found, target_name)
         await update.inline_query.answer([
             InlineQueryResultArticle(
-                id=action,
-                title=f"{action.capitalize()} → {target_name}",
+                id=action_found,
+                title=f"{action_found.capitalize()} → {target_name}",
                 description=response.replace("[", "").replace("]", "").replace("tg://user?id=", ""),
                 input_message_content=InputTextMessageContent(response, parse_mode="Markdown")
             )
