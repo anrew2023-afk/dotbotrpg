@@ -1583,4 +1583,346 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ Приоритетная поддержка",
             "",
             "💳 <b>Тарифы:</b>",
-            "• 199
+            "• 199 ₽ / месяц",
+            "• 1 490 ₽ / навсегда"
+        ]
+        text = build_menu_text("DotBotRPG Премиум", lines)
+        keyboard = [
+            [InlineKeyboardButton("💳 Оплатить 199 ₽ (месяц)", callback_data="pay_month")],
+            [InlineKeyboardButton("💳 Оплатить 1 490 ₽ (навсегда)", callback_data="pay_forever")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+        ]
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def premium_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Список премиум-пользователей"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    
+    premium_users = get_premium_users()
+    if not premium_users:
+        await query.edit_message_text("📋 Премиум-пользователей нет.")
+        return
+    
+    lines = []
+    for uid, until in premium_users:
+        u = get_user(uid)
+        name = u[U_FIRST_NAME] if u else str(uid)
+        status = "навсегда" if until is None else until[:10]
+        lines.append(f"• {name} — {status}")
+    
+    text = build_menu_text("Премиум-пользователи", lines)
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="premium")]]
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def give_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало выдачи премиума"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    
+    text = build_menu_text(
+        "Выдача премиум",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
+    )
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["giving_premium"] = True
+
+async def give_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода при выдаче премиума"""
+    user_id = update.effective_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        return
+    
+    if not context.user_data.get("giving_premium"):
+        return
+    
+    text = update.message.text.strip()
+    if text == "/cancel":
+        context.user_data.pop("giving_premium", None)
+        await update.message.reply_text("❌ Отменено")
+        await show_main_menu(update, context)
+        return
+    
+    target_id = await resolve_user_identifier(context, text)
+    if target_id is None:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("📅 1 месяц", callback_data=f"premium_month_{target_id}")],
+        [InlineKeyboardButton("♾️ Навсегда", callback_data=f"premium_forever_{target_id}")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="premium")]
+    ]
+    await update.message.reply_text("⏳ <b>Выберите срок:</b>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+    context.user_data.pop("giving_premium", None)
+
+async def give_premium_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение выдачи премиума"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    
+    parts = query.data.split("_")
+    period = parts[1]
+    target_id = int(parts[2])
+    
+    if period == "month":
+        until = (datetime.now() + timedelta(days=30)).isoformat()
+    else:
+        until = None
+    
+    set_premium(target_id, until)
+    get_user_cached.cache_clear()
+    await query.edit_message_text(f"✅ <b>Премиум выдан!</b> {'1 месяц' if period == 'month' else 'Навсегда'}", parse_mode="HTML")
+    await premium_menu(update, context)
+
+async def remove_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало отзыва премиума"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        await query.edit_message_text("❌ Доступ запрещён")
+        return
+    
+    text = build_menu_text(
+        "Отзыв премиум",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
+    )
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["removing_premium"] = True
+
+async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода при отзыве премиума"""
+    user_id = update.effective_user.id
+    if not check_access(user_id) or not is_creator(user_id):
+        return
+    
+    if not context.user_data.get("removing_premium"):
+        return
+    
+    text = update.message.text.strip()
+    if text == "/cancel":
+        context.user_data.pop("removing_premium", None)
+        await update.message.reply_text("❌ Отменено")
+        await show_main_menu(update, context)
+        return
+    
+    target_id = await resolve_user_identifier(context, text)
+    if target_id is None:
+        await update.message.reply_text("❌ Пользователь не найден.")
+        return
+    
+    remove_premium(target_id)
+    get_user_cached.cache_clear()
+    context.user_data.pop("removing_premium", None)
+    await update.message.reply_text("✅ Премиум отозван!")
+    await show_main_menu(update, context)
+
+# ===== ОБРАБОТЧИК КНОПОК =====
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик callback-кнопок"""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data.startswith("gender_"):
+        user_id = query.from_user.id
+        if not check_access(user_id):
+            await query.edit_message_text("❌ Доступ запрещён")
+            return
+        
+        gender = "male" if data == "gender_male" else "female"
+        register_user(user_id, query.from_user.first_name, gender)
+        get_user_cached.cache_clear()
+        await query.edit_message_text(f"✅ Пол установлен: <b>{'Мужской' if gender == 'male' else 'Женский'}</b>!", parse_mode="HTML")
+        await show_main_menu_from_query(query)
+    
+    elif data == "back":
+        await show_main_menu_from_query(query)
+    
+    elif data == "settings":
+        await settings_menu(query)
+    
+    elif data == "all_actions":
+        await all_actions_menu(query)
+    
+    elif data == "my_actions":
+        await my_actions_menu(query)
+    
+    elif data == "premium":
+        await premium_menu(update, context)
+    
+    elif data == "change_gender":
+        await change_gender_start(update, context)
+    
+    elif data.startswith("set_gender_"):
+        await change_gender_set(update, context)
+    
+    elif data == "change_name":
+        await change_name_start(update, context)
+    
+    elif data == "stats":
+        await show_stats(update, context)
+    
+    elif data == "create_action":
+        await create_action_start(update, context)
+    
+    elif data == "delete_action":
+        await delete_action_start(update, context)
+    
+    elif data.startswith("delete_"):
+        await delete_action_confirm(update, context)
+    
+    elif data.startswith("delpage_"):
+        await delete_page_handler(update, context)
+    
+    elif data == "users":
+        await users_menu(update, context)
+    
+    elif data == "add_user":
+        await add_user_start(update, context)
+    
+    elif data == "remove_user":
+        await remove_user_start(update, context)
+    
+    elif data.startswith("remove_"):
+        await remove_user_confirm(update, context)
+    
+    elif data == "skip_emoji":
+        await skip_emoji(update, context)
+    
+    elif data == "premium_list":
+        await premium_list(update, context)
+    
+    elif data == "give_premium":
+        await give_premium_start(update, context)
+    
+    elif data.startswith("premium_month_") or data.startswith("premium_forever_"):
+        await give_premium_confirm(update, context)
+    
+    elif data == "remove_premium":
+        await remove_premium_start(update, context)
+    
+    elif data == "tutorial":
+        await tutorial_menu(query)
+    
+    elif data == "noop":
+        pass
+
+# ===== КОМАНДЫ ПОМОЩИ И ОТМЕНЫ =====
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /help"""
+    user_id = update.effective_user.id
+    if not check_access(user_id):
+        return
+    
+    lines = [
+        "📌 <b>Команды в ЛС:</b>",
+        "/start — Главное меню",
+        "/menu — Главное меню",
+        "/settings — Настройки",
+        "/custom — Создать кастомное действие",
+        "/cancel — Отменить текущее действие",
+        "/help — Помощь"
+    ]
+    
+    if is_creator(user_id):
+        lines.extend([
+            "",
+            "👑 <b>Команды Создателя:</b>",
+            "/adduser — Добавить пользователя",
+            "/removeuser — Удалить пользователя",
+            "/userlist — Список доверенных",
+            "/setpremium — Выдать премиум",
+            "/removepremium — Забрать премиум",
+            "/premiumlist — Список премиум"
+        ])
+    
+    lines.extend([
+        "",
+        "📌 <b>Инлайн-режим (в чатах):</b>",
+        "В ЛС: @DotBotRPG_bot <Действие>",
+        "В группах: @DotBotRPG_bot <Действие> @username",
+        "",
+        "📌 <b>ZAPOMNIT — запомнить собеседника в ЛС:</b>",
+        "@DotBotRPG_bot ZAPOMNIT Имя",
+        "",
+        "📌 <b>Встроенные действия (20 шт.):</b>",
+        ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
+    ])
+    
+    text = build_menu_text("DotBotRPG — помощь", lines)
+    await update.message.reply_text(text, parse_mode="HTML")
+
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /cancel"""
+    user_id = update.effective_user.id
+    if not check_access(user_id):
+        return
+    
+    context.user_data.clear()
+    await update.message.reply_text("❌ Отменено")
+    await show_main_menu(update, context)
+
+# ===== ОСНОВНОЙ ЗАПУСК =====
+async def main():
+    """Главная функция запуска бота"""
+    print("🚀 Инициализация базы данных...")
+    init_db()
+    
+    print("🔧 Создание приложения...")
+    builder = ApplicationBuilder().token(TOKEN)
+    
+    if TELEGRAM_API_PROXY:
+        builder = builder.base_url(TELEGRAM_API_PROXY)
+    else:
+        print("🌐 Прямое подключение к Telegram API")
+    
+    builder = builder.connect_timeout(60).read_timeout(60).write_timeout(60)
+    app = builder.build()
+    
+    # Добавление обработчиков
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("cancel", cancel_command))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(InlineQueryHandler(inline_query))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+    
+    print("=" * 50)
+    print("🌙 DotBotRPG запущен!")
+    print(f"👑 Создатель: {CREATOR_ID}")
+    print(f"📋 Действий: {len(DEFAULT_ACTIONS)}")
+    print(f"💾 База данных: {DB_PATH}")
+    print("=" * 50)
+    print("✅ Бот готов к работе!")
+    print("=" * 50)
+    
+    # Запуск бота
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # Бесконечный цикл для поддержания работы
+    while True:
+        await asyncio.sleep(1)
+
+if __name__ == "__main__":
+    asyncio.run(main())
