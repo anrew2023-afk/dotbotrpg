@@ -13,6 +13,9 @@ TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAEu7HrWbdaAHWyxu9yl94Qfc4K6Hoag
 CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
 TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
 
+# ===== ПУТЬ К БАЗЕ ДАННЫХ (Volume) =====
+DB_PATH = "/data/dotbot.db"
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -56,7 +59,7 @@ PAGE_SIZE = 4
 
 # ===== БАЗА ДАННЫХ =====
 def init_db():
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -99,7 +102,7 @@ def init_db():
     print("✅ База данных инициализирована")
 
 def get_user(user_id):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = c.fetchone()
@@ -107,7 +110,7 @@ def get_user(user_id):
     return user
 
 def register_user(user_id, first_name, gender="male"):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, registered_at)
         VALUES (?, ?, ?, ?)""", (user_id, first_name, gender, datetime.now()))
@@ -115,14 +118,14 @@ def register_user(user_id, first_name, gender="male"):
     conn.close()
 
 def update_user_gender(user_id, gender):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE users SET gender = ? WHERE user_id = ?", (gender, user_id))
     conn.commit()
     conn.close()
 
 def update_user_name(user_id, name):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE users SET custom_name = ? WHERE user_id = ?", (name, user_id))
     conn.commit()
@@ -131,7 +134,7 @@ def update_user_name(user_id, name):
 def is_trusted(user_id):
     if user_id == CREATOR_ID:
         return True
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT 1 FROM allowed_users WHERE user_id = ?", (user_id,))
     result = c.fetchone()
@@ -142,7 +145,7 @@ def is_creator(user_id):
     return user_id == CREATOR_ID
 
 def get_custom_actions():
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
     actions = c.fetchall()
@@ -150,7 +153,7 @@ def get_custom_actions():
     return actions
 
 def add_custom_action(owner_id, trigger, response_male, response_female, emoji=""):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""INSERT INTO custom_actions (owner_id, trigger, response_male, response_female, emoji, created_at)
         VALUES (?, ?, ?, ?, ?, ?)""", (CREATOR_ID, trigger.lower(), response_male, response_female, emoji, datetime.now()))
@@ -158,14 +161,14 @@ def add_custom_action(owner_id, trigger, response_male, response_female, emoji="
     conn.close()
 
 def delete_custom_action(action_id):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("DELETE FROM custom_actions WHERE id = ?", (action_id,))
     conn.commit()
     conn.close()
 
 def get_user_actions_count(user_id):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (CREATOR_ID,))
     count = c.fetchone()[0]
@@ -173,7 +176,7 @@ def get_user_actions_count(user_id):
     return count
 
 def get_allowed_users():
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT user_id FROM allowed_users")
     users = c.fetchall()
@@ -181,7 +184,7 @@ def get_allowed_users():
     return [u[0] for u in users]
 
 def add_allowed_user(user_id, added_by):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
         VALUES (?, ?, ?)""", (user_id, added_by, datetime.now()))
@@ -189,14 +192,14 @@ def add_allowed_user(user_id, added_by):
     conn.close()
 
 def remove_allowed_user(user_id):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("DELETE FROM allowed_users WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
 def get_premium_users():
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT user_id, premium_until FROM users WHERE is_premium = TRUE")
     users = c.fetchall()
@@ -204,21 +207,21 @@ def get_premium_users():
     return users
 
 def set_premium(user_id, until=None):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""UPDATE users SET is_premium = TRUE, premium_until = ? WHERE user_id = ?""", (until, user_id))
     conn.commit()
     conn.close()
 
 def remove_premium(user_id):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""UPDATE users SET is_premium = FALSE, premium_until = NULL WHERE user_id = ?""", (user_id,))
     conn.commit()
     conn.close()
 
 def log_action(user_id, action_name, target_name):
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""INSERT INTO action_logs (user_id, action_name, target_name, used_at)
         VALUES (?, ?, ?, ?)""", (user_id, action_name, target_name, datetime.now()))
@@ -272,12 +275,11 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query_text.lower().startswith("trig."):
         query_text = query_text[5:].strip()
 
-    # ===== ИЩЕМ @username В КОНЦЕ =====
+    # Ищем @username в конце
     target_input = ""
     action = query_text
     custom = get_custom_actions()
 
-    # Проверяем кастомные действия с пробелами
     found_custom = False
     for c in custom:
         trigger = c[1]
@@ -292,7 +294,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     if not found_custom:
-        # Проверяем встроенные
         parts = query_text.split(" ", 1)
         if len(parts) > 1:
             first_word = parts[0].lower()
@@ -313,7 +314,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             action = query_text
 
-    # Если target всё ещё не найден — пробуем последнее слово с @
     if not target_input:
         words = query_text.split(" ")
         for i, w in enumerate(words):
@@ -324,7 +324,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     action = " ".join(words[:i])
                 break
 
-    # ===== ПОИСК ДЕЙСТВИЙ (без @username) =====
     if not target_input:
         action_lower = action.lower()
         all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
@@ -358,7 +357,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.inline_query.answer(results, cache_time=60)
         return
 
-    # ===== ЕСТЬ ДЕЙСТВИЕ + ПОЛУЧАТЕЛЬ =====
     sender_gender = "male"
     sender_name = "Пользователь"
     user = get_user(user_id)
@@ -378,7 +376,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
-    # Получаем имя цели
     target_name = target_input
     target_id = None
     try:
@@ -400,7 +397,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     emoji = ""
     is_custom = False
 
-    # Проверяем кастомные
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -409,13 +405,12 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             is_custom = True
             response = template.replace("Username1", sender_link).replace("Username2", target_link)
             response = f"{emoji} {response}".strip()
-            conn = sqlite3.connect("dotbot.db")
+            conn = sqlite3.connect(DB_PATH)
             conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
             conn.commit()
             conn.close()
             break
 
-    # Проверяем встроенные
     if not response and action.lower() in DEFAULT_ACTIONS:
         action_found = action.lower()
         data = DEFAULT_ACTIONS[action_found]
@@ -694,7 +689,7 @@ async def show_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    conn = sqlite3.connect("dotbot.db")
+    conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM custom_actions")
     total_actions = c.fetchone()[0]
