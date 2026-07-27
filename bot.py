@@ -143,16 +143,20 @@ def is_creator(user_id):
     return user_id == CREATOR_ID
 
 def get_custom_actions(user_id=None):
-    """Если user_id указан — возвращает только его действия. Если нет — все."""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
     if user_id is not None:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
         c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions WHERE owner_id = ?", (user_id,))
+        actions = c.fetchall()
+        conn.close()
+        return actions
     else:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
         c.execute("SELECT id, trigger, response_male, response_female, emoji, uses FROM custom_actions")
-    actions = c.fetchall()
-    conn.close()
-    return actions
+        actions = c.fetchall()
+        conn.close()
+        return actions
 
 def add_custom_action(owner_id, trigger, response_male, response_female, emoji=""):
     conn = sqlite3.connect(DB_PATH)
@@ -234,9 +238,9 @@ def check_access(user_id):
     return user_id == CREATOR_ID or is_trusted(user_id)
 
 # ===== УТИЛИТЫ =====
-def _fmt_name(name, user_id):
-    safe_name = name.replace("[", "").replace("]", "").replace("(", "").replace(")", "")
-    return f"[{safe_name}](tg://user?id={user_id})"
+def _format_name(name):
+    """Делает имя подчёркнутым и жирным"""
+    return f"<b><u>{name}</u></b>"
 
 def _build_menu_text(title, lines):
     text = f"🌙 <b>{title}</b>\n"
@@ -378,11 +382,9 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_name = target_input
-    target_id = None
     try:
         chat = await context.bot.get_chat(f"@{target_input}")
         if chat:
-            target_id = chat.id
             target_name = chat.first_name or ""
             if chat.last_name:
                 target_name += " " + chat.last_name
@@ -390,36 +392,39 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    sender_link = _fmt_name(sender_name, user_id)
-    target_link = _fmt_name(target_name, target_id) if target_id else target_name
+    # Форматируем имена (жирный + подчёркнутый)
+    sender_name_f = _format_name(sender_name)
+    target_name_f = _format_name(target_name)
 
     response = None
     action_found = None
     emoji = ""
     is_custom = False
 
-    # Проверяем кастомные (только свои)
+    # Кастомные
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
             template = c[2] if sender_gender == "male" else c[3]
             emoji = c[4] or ""
             is_custom = True
-            response = template.replace("Username1", sender_link).replace("Username2", target_link)
-            response = f"{emoji} | <b>{response}</b>"
+            # Заменяем имена с форматированием
+            template = template.replace("Username1", sender_name_f)
+            template = template.replace("Username2", target_name_f)
+            response = f"{emoji} | <b>{template}</b>"
             conn = sqlite3.connect(DB_PATH)
             conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
             conn.commit()
             conn.close()
             break
 
-    # Проверяем встроенные
+    # Встроенные
     if not response and action.lower() in DEFAULT_ACTIONS:
         action_found = action.lower()
         data = DEFAULT_ACTIONS[action_found]
         verb = data["male"] if sender_gender == "male" else data["female"]
         emoji = data["emoji"]
-        response = f"{emoji} | <b>{sender_link} {verb} {target_link}</b>"
+        response = f"{emoji} | <b>{sender_name_f} {verb} {target_name_f}</b>"
 
     if response:
         log_action(user_id, action_found, target_name)
@@ -427,7 +432,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineQueryResultArticle(
                 id=action_found,
                 title=f"{action_found.capitalize()} → {target_name}",
-                description=response.replace("[", "").replace("]", "").replace("tg://user?id=", "").replace("<b>", "").replace("</b>", ""),
+                description=response.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", ""),
                 input_message_content=InputTextMessageContent(response, parse_mode="HTML")
             )
         ], cache_time=0)
