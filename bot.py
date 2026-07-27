@@ -1887,7 +1887,7 @@ async def main():
     init_db()
     
     print("🔧 Создание приложения...")
-    builder = ApplicationBuilder().token(TOKEN)
+    builder = Application.builder().token(TOKEN)
     
     if TELEGRAM_API_PROXY:
         builder = builder.base_url(TELEGRAM_API_PROXY)
