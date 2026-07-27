@@ -1880,6 +1880,10 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Отменено")
     await show_main_menu(update, context)
 
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда /menu"""
+    await start(update, context)
+
 # ===== ОСНОВНОЙ ЗАПУСК =====
 async def main():
     """Главная функция запуска бота"""
@@ -1887,19 +1891,11 @@ async def main():
     init_db()
     
     print("🔧 Создание приложения...")
-    builder = Application.builder().token(TOKEN)
-    
-    if TELEGRAM_API_PROXY:
-        builder = builder.base_url(TELEGRAM_API_PROXY)
-    else:
-        print("🌐 Прямое подключение к Telegram API")
-    
-    builder = builder.connect_timeout(60).read_timeout(60).write_timeout(60)
-    app = builder.build()
+    app = Application.builder().token(TOKEN).build()
     
     # Добавление обработчиков
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("menu", start))
+    app.add_handler(CommandHandler("menu", menu_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("cancel", cancel_command))
     app.add_handler(CallbackQueryHandler(button_handler))
