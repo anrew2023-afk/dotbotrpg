@@ -408,6 +408,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
+    # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
     target_display_name = get_user_display_name(target_input)
     if target_display_name == target_input:
         try:
@@ -424,6 +425,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action_found = None
     emoji = ""
 
+    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ (используем target_name_f) =====
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -438,6 +440,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             break
 
+    # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
     if not response and action.lower() in DEFAULT_ACTIONS:
         action_found = action.lower()
         data = DEFAULT_ACTIONS[action_found]
@@ -602,6 +605,7 @@ async def show_main_menu_from_query(query):
         ]
     )
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
 # ===== НАСТРОЙКИ =====
 async def settings_menu(query):
     user_id = query.from_user.id
