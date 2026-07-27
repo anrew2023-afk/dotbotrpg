@@ -98,6 +98,15 @@ def init_db():
         custom_name TEXT,
         updated_at TIMESTAMP
     )""")
+    # ===== НОВАЯ ТАБЛИЦА: партнёры в ЛС =====
+    c.execute("""CREATE TABLE IF NOT EXISTS private_chat_partners (
+        chat_id INTEGER,
+        user_id INTEGER,
+        partner_id INTEGER,
+        partner_name TEXT,
+        updated_at TIMESTAMP,
+        PRIMARY KEY (chat_id, user_id)
+    )""")
     c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, role, registered_at)
         VALUES (?, ?, ?, ?, ?)""", (CREATOR_ID, "𝓜𝓪𝓭𝓪𝓶", "female", "creator", datetime.now()))
     c.execute("""INSERT OR IGNORE INTO allowed_users (user_id, added_by, added_at)
@@ -265,6 +274,32 @@ def get_user_display_name(username):
             return result[1]
     return username
 
+# ===== НОВЫЕ ФУНКЦИИ ДЛЯ ПАРТНЁРОВ В ЛС =====
+def save_private_chat_partner(chat_id, user_id, partner_id, partner_name):
+    """Сохраняет партнёра в ЛС"""
+    if not partner_name:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT OR REPLACE INTO private_chat_partners 
+        (chat_id, user_id, partner_id, partner_name, updated_at)
+        VALUES (?, ?, ?, ?, ?)""", 
+        (chat_id, user_id, partner_id, partner_name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_private_chat_partner(chat_id, user_id):
+    """Получает имя и ID партнёра из БД"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""SELECT partner_name, partner_id FROM private_chat_partners 
+        WHERE chat_id = ? AND user_id = ?""", (chat_id, user_id))
+    result = c.fetchone()
+    conn.close()
+    if result:
+        return result[0], result[1]  # имя, id
+    return None, None
+
 # ===== УТИЛИТЫ =====
 def _format_name(name):
     return f"<b><u>{name}</u></b>"
@@ -379,22 +414,17 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_display_name = None
     target_id = None
 
-    # ===== В ЛС — определяем собеседника =====
+    # ===== В ЛС — получаем партнёра из БД =====
     if chat_type == "private":
-        try:
-            chat_id = update.inline_query.chat_id
-            members = await context.bot.get_chat_members(chat_id)
-            for member in members:
-                if member.user.id != user_id:
-                    target_display_name = member.user.first_name
-                    if member.user.last_name:
-                        target_display_name += " " + member.user.last_name
-                    target_id = member.user.id
-                    break
-            if not target_display_name:
-                target_display_name = "Собеседник"
-        except Exception as e:
+        chat_id = update.inline_query.chat_id
+        partner_name, partner_id = get_private_chat_partner(chat_id, user_id)
+        
+        if partner_name:
+            target_display_name = partner_name
+            target_id = partner_id
+        else:
             target_display_name = "Собеседник"
+            target_id = None
     else:
         # В ГРУППЕ — нужен @username
         if not target_input:
@@ -487,6 +517,19 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         first_name = update.effective_user.first_name
         if username and first_name:
             save_user_name(user_id, username, first_name)
+
+    # ===== НОВОЕ: Сохраняем партнёра, если ответили на сообщение =====
+    if update.message and update.message.reply_to_message:
+        reply_user = update.message.reply_to_message.from_user
+        if reply_user and reply_user.id != user_id:
+            chat_id = update.effective_chat.id
+            partner_name = reply_user.first_name
+            if reply_user.last_name:
+                partner_name += " " + reply_user.last_name
+            save_private_chat_partner(chat_id, user_id, reply_user.id, partner_name)
+            
+            # Также сохраняем обратную связь (для собеседника)
+            save_private_chat_partner(chat_id, reply_user.id, user_id, update.effective_user.first_name)
 
     state = context.user_data
     
