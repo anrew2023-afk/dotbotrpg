@@ -8,7 +8,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InlineQ
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder, InlineQueryHandler, MessageHandler, filters
 
 # ===== КОНФИГУРАЦИЯ =====
-TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAFk1v5PnqcnqOqk3N7Xbugquy8MT3BBr_U")
+TOKEN = os.environ.get("BOT_TOKEN", "8765639328:AAEu7HrWbdaAHWyxu9yl94Qfc4K6HoagFyA")
 CREATOR_ID = int(os.environ.get("CREATOR_ID", 8269156736))
 TELEGRAM_API_PROXY = os.environ.get("TELEGRAM_API_PROXY", None)
 
