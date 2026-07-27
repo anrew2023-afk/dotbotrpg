@@ -285,6 +285,7 @@ def normalize_username_placeholders(text):
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
+    chat_type = update.inline_query.chat_type  # "private" или "group"
 
     if not check_access(user_id):
         await update.inline_query.answer([], cache_time=0)
@@ -356,39 +357,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     action = " ".join(words[:i])
                 break
 
-    if not target_input:
-        action_lower = action.lower()
-        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
-        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
-        matched = list(dict.fromkeys(matched))
-        results = []
-        for act in matched[:5]:
-            emoji = ""
-            if act in DEFAULT_ACTIONS:
-                emoji = DEFAULT_ACTIONS[act]["emoji"]
-            else:
-                for c in custom:
-                    if c[1] == act:
-                        emoji = c[4] or ""
-                        break
-            results.append(InlineQueryResultArticle(
-                id=act,
-                title=f"{emoji} {act.capitalize()}",
-                description=f"{act} @username",
-                input_message_content=InputTextMessageContent(f"{act} @username")
-            ))
-        if not results:
-            results = [InlineQueryResultArticle(
-                id="notfound",
-                title="🤖 Ничего не найдено",
-                description="Попробуйте: обнять, поцеловать, ударить...",
-                input_message_content=InputTextMessageContent(
-                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
-                )
-            )]
-        await update.inline_query.answer(results, cache_time=60)
-        return
-
+    # ===== ОПРЕДЕЛЯЕМ ЦЕЛЬ =====
     sender_gender = "male"
     sender_name = "Пользователь"
     user = get_user(user_id)
@@ -408,15 +377,55 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
-    # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
-    target_display_name = get_user_display_name(target_input)
-    if target_display_name == target_input:
+    target_display_name = None
+    target_id = None
+
+    # ===== ЕСЛИ В ЛС — АВТОМАТИЧЕСКИ ОПРЕДЕЛЯЕМ СОБЕСЕДНИКА =====
+    if chat_type == "private":
         try:
-            chat = await context.bot.get_chat(f"@{target_input}")
-            if chat and chat.first_name:
-                target_display_name = chat.first_name
-        except Exception:
-            pass
+            # В ЛС chat_id = ID собеседника
+            target_user_id = update.inline_query.chat_id
+            target_user = await context.bot.get_chat(target_user_id)
+            if target_user and target_user.first_name:
+                target_display_name = target_user.first_name
+                if target_user.last_name:
+                    target_display_name += " " + target_user.last_name
+                target_id = target_user.id
+            else:
+                target_display_name = "Собеседник"
+        except Exception as e:
+            target_display_name = "Собеседник"
+    else:
+        # В ГРУППЕ — нужно указывать @username
+        if not target_input:
+            await update.inline_query.answer([
+                InlineQueryResultArticle(
+                    id="hint",
+                    title="❌ Укажите получателя",
+                    description="В группах нужно указывать @username",
+                    input_message_content=InputTextMessageContent(
+                        "❌ В группах нужно указывать @username\n\nПример: обнять @petya"
+                    )
+                )
+            ], cache_time=60)
+            return
+        
+        # Пытаемся найти имя по @username
+        target_display_name = get_user_display_name(target_input)
+        if target_display_name == target_input:
+            try:
+                target_user = await context.bot.get_chat(f"@{target_input}")
+                if target_user and target_user.first_name:
+                    target_display_name = target_user.first_name
+                    if target_user.last_name:
+                        target_display_name += " " + target_user.last_name
+                    target_id = target_user.id
+            except Exception:
+                target_display_name = target_input
+
+    # Если в ЛС и нет действия — показываем подсказку
+    if not target_display_name:
+        target_display_name = target_input or "Собеседник"
 
     sender_name_f = _format_name(sender_name)
     target_name_f = _format_name(target_display_name)
@@ -425,7 +434,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action_found = None
     emoji = ""
 
-    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ (используем target_name_f) =====
+    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ =====
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -1454,7 +1463,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.extend([
         "",
         "📌 <b>Инлайн-режим (в чатах):</b>",
-        "@DotBotRPG_bot <Действие> @username",
+        "В ЛС: @DotBotRPG_bot <Действие>",
+        "В группах: @DotBotRPG_bot <Действие> @username",
         "",
         "📌 <b>Встроенные действия (20 шт.):</b>",
         ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
