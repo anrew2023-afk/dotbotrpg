@@ -98,7 +98,6 @@ def init_db():
         custom_name TEXT,
         updated_at TIMESTAMP
     )""")
-    # ===== НОВАЯ ТАБЛИЦА: партнёры в ЛС =====
     c.execute("""CREATE TABLE IF NOT EXISTS private_chat_partners (
         chat_id INTEGER,
         user_id INTEGER,
@@ -106,6 +105,14 @@ def init_db():
         partner_name TEXT,
         updated_at TIMESTAMP,
         PRIMARY KEY (chat_id, user_id)
+    )""")
+    # ===== НОВАЯ ТАБЛИЦА: алиасы (ZAPOMNIT) =====
+    c.execute("""CREATE TABLE IF NOT EXISTS user_aliases (
+        owner_id INTEGER,
+        target_username TEXT,
+        target_name TEXT,
+        created_at TIMESTAMP,
+        PRIMARY KEY (owner_id, target_username)
     )""")
     c.execute("""INSERT OR IGNORE INTO users (user_id, first_name, gender, role, registered_at)
         VALUES (?, ?, ?, ?, ?)""", (CREATOR_ID, "𝓜𝓪𝓭𝓪𝓶", "female", "creator", datetime.now()))
@@ -274,9 +281,7 @@ def get_user_display_name(username):
             return result[1]
     return username
 
-# ===== НОВЫЕ ФУНКЦИИ ДЛЯ ПАРТНЁРОВ В ЛС =====
 def save_private_chat_partner(chat_id, user_id, partner_id, partner_name):
-    """Сохраняет партнёра в ЛС"""
     if not partner_name:
         return
     conn = sqlite3.connect(DB_PATH)
@@ -289,7 +294,6 @@ def save_private_chat_partner(chat_id, user_id, partner_id, partner_name):
     conn.close()
 
 def get_private_chat_partner(chat_id, user_id):
-    """Получает имя и ID партнёра из БД"""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""SELECT partner_name, partner_id FROM private_chat_partners 
@@ -297,8 +301,32 @@ def get_private_chat_partner(chat_id, user_id):
     result = c.fetchone()
     conn.close()
     if result:
-        return result[0], result[1]  # имя, id
+        return result[0], result[1]
     return None, None
+
+# ===== ФУНКЦИИ ДЛЯ ZAPOMNIT =====
+def save_alias(owner_id, target_username, target_name):
+    """Сохраняет алиас для пользователя"""
+    if not target_username or not target_name:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT OR REPLACE INTO user_aliases (owner_id, target_username, target_name, created_at)
+        VALUES (?, ?, ?, ?)""", (owner_id, target_username.lower(), target_name, datetime.now()))
+    conn.commit()
+    conn.close()
+
+def get_alias(owner_id, target_username):
+    """Получает запомненное имя для пользователя"""
+    if not target_username:
+        return None
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT target_name FROM user_aliases WHERE owner_id = ? AND target_username = ?", 
+              (owner_id, target_username.lower()))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
 
 # ===== УТИЛИТЫ =====
 def _format_name(name):
@@ -315,6 +343,101 @@ def normalize_username_placeholders(text):
     text = re.sub(r'(?i)Username1', 'Username1', text)
     text = re.sub(r'(?i)Username2', 'Username2', text)
     return text
+
+# ===== ТУТОРИАЛ =====
+async def tutorial_menu(query):
+    """Показывает туториал по боту"""
+    text = """📚 <b>Добро пожаловать в DotBotRPG!</b>
+━━━━━━━━━━━━━━━━━━━
+
+<b>🤖 Что такое DotBotRPG?</b>
+Это бот для взаимодействия с другими пользователями через действия. Ты можешь обнимать, целовать, шутить и создавать свои собственные действия!
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 1. ИНЛАЙН-РЕЖИМ</b>
+
+В любом чате напиши:
+<code>@DotBotRPG_bot Обнять @username</code>
+
+<b>В личных чатах (ЛС):</b>
+<code>@DotBotRPG_bot Обнять</code>
+Бот сам определит собеседника.
+
+<b>В группах:</b>
+<code>@DotBotRPG_bot Обнять @petya</code>
+Нужно указывать @username.
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 2. КАК ЗАПОМНИТЬ ИМЯ (ZAPOMNIT)</b>
+
+Хочешь, чтобы бот показывал имя, а не @username?
+Используй команду:
+
+<code>@DotBotRPG_bot ZAPOMNIT @pasha123 паша</code>
+
+Где:
+• @pasha123 — юзернейм человека
+• паша — имя, которое будешь видеть ТЫ
+
+<b>Важно!</b> Это работает ТОЛЬКО для тебя. Другие люди будут видеть обычное имя.
+
+<b>Пример:</b>
+Ты написал: @bot ZAPOMNIT @pasha123 Паша
+Теперь когда ты пишешь: @bot Обнять @pasha123
+Бот покажет: 🫂 | Ты обнял <b>Паша</b> ✅
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 3. КАК СОЗДАТЬ СВОЁ ДЕЙСТВИЕ</b>
+
+1. Напиши /start
+2. Нажми <b>➕ Создать действие</b>
+3. Введи название (например, "Чмокнуть")
+4. Введи ответ для МУЖСКОГО пола:
+   <code>Username1 чмокнул Username2 и убежал</code>
+5. Введи ответ для ЖЕНСКОГО пола:
+   <code>Username1 чмокнула Username2 и убежала</code>
+6. Добавь эмодзи (или пропусти)
+7. Готово! ✅
+
+<b>Теперь используй:</b>
+<code>@DotBotRPG_bot Чмокнуть @username</code>
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 4. ВСТРОЕННЫЕ ДЕЙСТВИЯ (20 шт.)</b>
+
+Обнять, Ударить, Погладить, Поцеловать, Сесть,
+Успокоить, Поговорить, Пожениться, Завести отношения,
+Укусить, Щекотка, Подарить цветы, Обнять крепко,
+Потанцевать, Спеть, Приготовить еду, Сделать массаж,
+Поздравить, Извиниться, Попросить прощения
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 5. ПРЕМИУМ</b>
+
+• 25 кастомных действий (вместо 5)
+• Эмодзи в действиях
+• Смена имени в настройках
+
+💳 199 ₽/месяц или 1 490 ₽ навсегда
+
+━━━━━━━━━━━━━━━━━━━
+<b>📌 6. КОМАНДЫ В ЛС</b>
+
+/start — Главное меню
+/menu — Главное меню
+/settings — Настройки
+/custom — Создать действие
+/cancel — Отменить создание
+/help — Помощь
+
+━━━━━━━━━━━━━━━━━━━
+<b>❓ Остались вопросы?</b>
+Напиши /help или задай вопрос в ЛС создателю.
+
+🌙 <b>Приятной игры!</b>"""
+
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -411,46 +534,61 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
+    # ===== ОБРАБОТКА ZAPOMNIT =====
+    if action.lower() == "zapomnit" and target_input:
+        # Парсим: ZAPOMNIT @username имя
+        parts = query_text.split(" ", 2)
+        if len(parts) >= 3:
+            zapomnit_username = parts[1].strip()
+            if zapomnit_username.startswith("@"):
+                zapomnit_username = zapomnit_username[1:]
+            zapomnit_name = parts[2].strip()
+            
+            if zapomnit_username and zapomnit_name:
+                save_alias(user_id, zapomnit_username, zapomnit_name)
+                await update.inline_query.answer([
+                    InlineQueryResultArticle(
+                        id="zapomnit",
+                        title="✅ Запомнил!",
+                        description=f"Теперь {zapomnit_username} = {zapomnit_name}",
+                        input_message_content=InputTextMessageContent(
+                            f"✅ <b>Запомнил!</b>\n\nТеперь я буду показывать <b>{zapomnit_name}</b> вместо @{zapomnit_username} ТОЛЬКО ДЛЯ ТЕБЯ.",
+                            parse_mode="HTML"
+                        )
+                    )
+                ], cache_time=0)
+                return
+
     target_display_name = None
     target_id = None
 
-    # ===== В ЛС — получаем партнёра из БД =====
-    if chat_type == "private":
+    # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
+    if target_input:
+        # Сначала проверяем алиас (ZAPOMNIT)
+        alias = get_alias(user_id, target_input)
+        if alias:
+            target_display_name = alias
+        else:
+            target_display_name = get_user_display_name(target_input)
+            if target_display_name == target_input:
+                try:
+                    target_user = await context.bot.get_chat(f"@{target_input}")
+                    if target_user and target_user.first_name:
+                        target_display_name = target_user.first_name
+                        if target_user.last_name:
+                            target_display_name += " " + target_user.last_name
+                        target_id = target_user.id
+                except Exception:
+                    target_display_name = target_input
+    elif chat_type == "private":
+        # В ЛС без @username — пытаемся получить партнёра
         chat_id = update.inline_query.chat_id
         partner_name, partner_id = get_private_chat_partner(chat_id, user_id)
-        
         if partner_name:
             target_display_name = partner_name
             target_id = partner_id
         else:
             target_display_name = "Собеседник"
-            target_id = None
-    else:
-        # В ГРУППЕ — нужен @username
-        if not target_input:
-            await update.inline_query.answer([
-                InlineQueryResultArticle(
-                    id="hint",
-                    title="❌ Укажите получателя",
-                    description="В группах нужно указывать @username",
-                    input_message_content=InputTextMessageContent(
-                        "❌ В группах нужно указывать @username\n\nПример: обнять @petya"
-                    )
-                )
-            ], cache_time=60)
-            return
-        
-        target_display_name = get_user_display_name(target_input)
-        if target_display_name == target_input:
-            try:
-                target_user = await context.bot.get_chat(f"@{target_input}")
-                if target_user and target_user.first_name:
-                    target_display_name = target_user.first_name
-                    if target_user.last_name:
-                        target_display_name += " " + target_user.last_name
-                    target_id = target_user.id
-            except Exception:
-                target_display_name = target_input
 
     if not target_display_name:
         target_display_name = target_input or "Собеседник"
@@ -518,7 +656,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if username and first_name:
             save_user_name(user_id, username, first_name)
 
-    # ===== НОВОЕ: Сохраняем партнёра, если ответили на сообщение =====
     if update.message and update.message.reply_to_message:
         reply_user = update.message.reply_to_message.from_user
         if reply_user and reply_user.id != user_id:
@@ -527,8 +664,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if reply_user.last_name:
                 partner_name += " " + reply_user.last_name
             save_private_chat_partner(chat_id, user_id, reply_user.id, partner_name)
-            
-            # Также сохраняем обратную связь (для собеседника)
             save_private_chat_partner(chat_id, reply_user.id, user_id, update.effective_user.first_name)
 
     state = context.user_data
@@ -595,14 +730,16 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
             [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("📚 Туториал", callback_data="tutorial")],
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
     else:
         keyboard = [
             [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("📚 Туториал", callback_data="tutorial")],
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
 
     text = _build_menu_text(
@@ -634,14 +771,16 @@ async def show_main_menu_from_query(query):
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
             [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("📚 Туториал", callback_data="tutorial")],
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
     else:
         keyboard = [
             [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("📚 Туториал", callback_data="tutorial")],
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
 
     text = _build_menu_text(
@@ -1472,6 +1611,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await give_premium_confirm(update, context)
     elif data == "remove_premium":
         await remove_premium_start(update, context)
+    elif data == "tutorial":
+        await tutorial_menu(query)
     elif data == "noop":
         pass
 
@@ -1505,6 +1646,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "В ЛС: @DotBotRPG_bot <Действие>",
         "В группах: @DotBotRPG_bot <Действие> @username",
         "",
+        "📌 <b>ZAPOMNIT — запомнить имя:</b>",
+        "@DotBotRPG_bot ZAPOMNIT @username Имя",
+        "",
         "📌 <b>Встроенные действия (20 шт.):</b>",
         ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
     ])
@@ -1517,6 +1661,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.user_data.clear()
     await update.message.reply_text("❌ Отменено")
+    await show_main_menu(update, context)
 
 async def main():
     print("🚀 Инициализация базы данных...")
