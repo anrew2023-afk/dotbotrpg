@@ -363,28 +363,29 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = None
     action_found = None
 
-    if action in DEFAULT_ACTIONS:
+    # ===== СНАЧАЛА ПРОВЕРЯЕМ КАСТОМНЫЕ (НОВЫЕ ДЕЙСТВИЯ) =====
+    custom = get_custom_actions()
+    for c in custom:
+        if c[1].lower() == action:
+            template = c[2] if sender_gender == "male" else c[3]
+            emoji = c[4] or ""
+            template = template.replace("Username1", sender_link)
+            template = template.replace("Username2", target_link)
+            response = f"{emoji} {template}".strip()
+            action_found = c[1]
+            conn = sqlite3.connect("dotbot.db")
+            conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
+            conn.commit()
+            conn.close()
+            break
+
+    # ===== ПОТОМ ВСТРОЕННЫЕ =====
+    if not response and action in DEFAULT_ACTIONS:
         data = DEFAULT_ACTIONS[action]
         verb = data["male"] if sender_gender == "male" else data["female"]
         emoji = data["emoji"]
         response = f"{emoji} {sender_link} {verb} {target_link}"
         action_found = action
-
-    if not response:
-        custom = get_custom_actions()
-        for c in custom:
-            if c[1].lower() == action:
-                template = c[2] if sender_gender == "male" else c[3]
-                emoji = c[4] or ""
-                template = template.replace("Username1", sender_link)
-                template = template.replace("Username2", target_link)
-                response = f"{emoji} {template}".strip()
-                action_found = c[1]
-                conn = sqlite3.connect("dotbot.db")
-                conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
-                conn.commit()
-                conn.close()
-                break
 
     if response:
         log_action(user_id, action_found, target_name)
