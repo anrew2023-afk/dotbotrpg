@@ -38,7 +38,7 @@ class _HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"OK")
 
     def log_message(self, format, *args):
-        pass  # не засоряем логи health-check запросами
+        pass
 
 def start_health_server():
     port = int(os.environ.get("PORT", 8080))
@@ -46,28 +46,158 @@ def start_health_server():
     print(f"🩺 Health-check сервер запущен на порту {port}")
     server.serve_forever()
 
-# ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
+# ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ (150 шт.) =====
 DEFAULT_ACTIONS = {
-    "обнять": {"male": "обнял", "female": "обняла", "emoji": "🫂"},
-    "ударить": {"male": "ударил", "female": "ударила", "emoji": "💥"},
-    "погладить": {"male": "погладил", "female": "погладила", "emoji": "✨"},
-    "поцеловать": {"male": "поцеловал", "female": "поцеловала", "emoji": "😘"},
-    "сесть": {"male": "сел рядом с", "female": "села рядом с", "emoji": "🪑"},
-    "успокоить": {"male": "успокоил", "female": "успокоила", "emoji": "🫂"},
-    "поговорить": {"male": "поговорил с", "female": "поговорила с", "emoji": "💬"},
-    "пожениться": {"male": "поженился на", "female": "поженилась на", "emoji": "💍"},
-    "завести отношения": {"male": "завёл отношения с", "female": "завела отношения с", "emoji": "💕"},
-    "укусить": {"male": "укусил", "female": "укусила", "emoji": "🦷"},
-    "щекотать": {"male": "пощекотал", "female": "пощекотала", "emoji": "🤣"},
-    "подарить цветы": {"male": "подарил цветы", "female": "подарила цветы", "emoji": "🌹"},
-    "обнять крепко": {"male": "крепко обнял", "female": "крепко обняла", "emoji": "🤗"},
-    "потанцевать": {"male": "потанцевал с", "female": "потанцевала с", "emoji": "💃"},
-    "спеть": {"male": "спел для", "female": "спела для", "emoji": "🎤"},
-    "приготовить еду": {"male": "приготовил еду для", "female": "приготовила еду для", "emoji": "🍳"},
-    "сделать массаж": {"male": "сделал массаж", "female": "сделала массаж", "emoji": "💆"},
-    "поздравить": {"male": "поздравил", "female": "поздравила", "emoji": "🎉"},
-    "извиниться": {"male": "извинился перед", "female": "извинилась перед", "emoji": "🙏"},
-    "попросить прощения": {"male": "попросил прощения у", "female": "попросила прощения у", "emoji": "🥺"}
+    "скучаю": {"male": "скучает по", "female": "скучает по", "emoji": "💭"},
+    "заебал": {"male": "заебал", "female": "заебала", "emoji": "😤"},
+    "обнимаю": {"male": "обнимает", "female": "обнимает", "emoji": "🤗"},
+    "отвали": {"male": "отвалил от", "female": "отвалила от", "emoji": "👋"},
+    "люблю": {"male": "любит", "female": "любит", "emoji": "❤️"},
+    "нахуй": {"male": "послал нахуй", "female": "послала нахуй", "emoji": "🖕"},
+    "лучший": {"male": "сказал, что он лучший", "female": "сказала, что он лучший", "emoji": "⭐"},
+    "бесишь": {"male": "бесится на", "female": "бесится на", "emoji": "😡"},
+    "рядом": {"male": "рядом с", "female": "рядом с", "emoji": "👥"},
+    "надоел": {"male": "надоел", "female": "надоел", "emoji": "😩"},
+    "береги": {"male": "просит беречь себя", "female": "просит беречь себя", "emoji": "🛡️"},
+    "заткнись": {"male": "заткнул", "female": "заткнула", "emoji": "🤫"},
+    "целую": {"male": "целует", "female": "целует", "emoji": "💋"},
+    "пошёл": {"male": "послал нахуй", "female": "послала нахуй", "emoji": "🚫"},
+    "классный": {"male": "сказал, что он классный", "female": "сказала, что он классный", "emoji": "👍"},
+    "задолбал": {"male": "задолбал", "female": "задолбала", "emoji": "💢"},
+    "крутой": {"male": "сказал, что он крутой", "female": "сказала, что он крутой", "emoji": "🔥"},
+    "отъебись": {"male": "отъебался от", "female": "отъебалась от", "emoji": "✋"},
+    "милый": {"male": "сказал, что он милый", "female": "сказала, что он милый", "emoji": "🥰"},
+    "завали": {"male": "сказал завалить", "female": "сказала завалить", "emoji": "💀"},
+    "соскучился": {"male": "соскучился по", "female": "соскучилась по", "emoji": "😢"},
+    "в рот": {"male": "послал в рот", "female": "послала в рот", "emoji": "👄"},
+    "хочу": {"male": "хочет обнять", "female": "хочет обнять", "emoji": "🤲"},
+    "оставь": {"male": "просит оставить его", "female": "просит оставить её", "emoji": "🚪"},
+    "особенный": {"male": "сказал, что он особенный", "female": "сказала, что он особенный", "emoji": "💎"},
+    "не беси": {"male": "просит не бесить его", "female": "просит не бесить её", "emoji": "😇"},
+    "опора": {"male": "сказал, что она его опора", "female": "сказала, что он её опора", "emoji": "🏔️"},
+    "хватит": {"male": "сказал хватит", "female": "сказала хватит", "emoji": "⛔"},
+    "не могу": {"male": "не может без", "female": "не может без", "emoji": "💔"},
+    "подожди": {"male": "просит подождать", "female": "просит подождать", "emoji": "⏳"},
+    "вернись": {"male": "просит вернуться", "female": "просит вернуться", "emoji": "🔄"},
+    "отстань": {"male": "просит отстать", "female": "просит отстать", "emoji": "🙅"},
+    "помню": {"male": "помнит тот день с", "female": "помнит тот день с", "emoji": "📅"},
+    "слушай": {"male": "сказал слушать", "female": "сказала слушать", "emoji": "👂"},
+    "с тобой": {"male": "с", "female": "с", "emoji": "🤝"},
+    "не заставляй": {"male": "просит не заставлять его", "female": "просит не заставлять её", "emoji": "🙏"},
+    "офигенный": {"male": "сказал, что он офигенный", "female": "сказала, что он офигенный", "emoji": "🤩"},
+    "устал": {"male": "устал от", "female": "устала от", "emoji": "😴"},
+    "смех": {"male": "любит смех", "female": "любит смех", "emoji": "😂"},
+    "не ори": {"male": "просит не орать", "female": "просит не орать", "emoji": "🔇"},
+    "уважаю": {"male": "уважает", "female": "уважает", "emoji": "🤝"},
+    "угомонись": {"male": "просит угомониться", "female": "просит угомониться", "emoji": "😌"},
+    "голос": {"male": "голос успокаивает", "female": "голос успокаивает", "emoji": "🎵"},
+    "зачем": {"male": "спросил, зачем он это сделал", "female": "спросила, зачем он это сделал", "emoji": "🤔"},
+    "горжусь": {"male": "гордится", "female": "гордится", "emoji": "🏆"},
+    "дай время": {"male": "просит дать время", "female": "просит дать время", "emoji": "⏰"},
+    "прощу": {"male": "всё простит", "female": "всё простит", "emoji": "🕊️"},
+    "завязывай": {"male": "сказал завязывать", "female": "сказала завязывать", "emoji": "✂️"},
+    "прав": {"male": "сказал, что он всегда прав", "female": "сказала, что он всегда прав", "emoji": "✅"},
+    "не лезь": {"male": "просит не лезть", "female": "просит не лезть", "emoji": "🚧"},
+    "доверяю": {"male": "доверяет", "female": "доверяет", "emoji": "🤝"},
+    "не могу так": {"male": "больше не может так с", "female": "больше не может так с", "emoji": "💔"},
+    "глаза": {"male": "теряется в глазах", "female": "теряется в глазах", "emoji": "👀"},
+    "выхожу": {"male": "вышел из игры с", "female": "вышла из игры с", "emoji": "🚪"},
+    "солнце": {"male": "сказал, что он как солнце", "female": "сказала, что он как солнце", "emoji": "☀️"},
+    "не справлюсь": {"male": "не справляется без", "female": "не справляется без", "emoji": "😰"},
+    "люблю рядом": {"male": "любит, когда рядом", "female": "любит, когда рядом", "emoji": "💕"},
+    "устал всего": {"male": "устал от всего с", "female": "устала от всего с", "emoji": "😫"},
+    "поверь": {"male": "просит поверить", "female": "просит поверить", "emoji": "🤞"},
+    "прости": {"male": "извинился перед", "female": "извинилась перед", "emoji": "🙇"},
+    "ты прав": {"male": "сказал, что он прав", "female": "сказала, что он прав", "emoji": "👍"},
+    "нужен": {"male": "нужен", "female": "нужен", "emoji": "💫"},
+    "теряюсь": {"male": "теряется рядом с", "female": "теряется рядом с", "emoji": "😵"},
+    "знаю": {"male": "знает, что чувствует", "female": "знает, что чувствует", "emoji": "🧠"},
+    "думаю": {"male": "думает о", "female": "думает о", "emoji": "💭"},
+    "справимся": {"male": "сказал, что они справятся", "female": "сказала, что они справятся", "emoji": "💪"},
+    "хочу рядом": {"male": "хочет быть рядом с", "female": "хочет быть рядом с", "emoji": "🏠"},
+    "получится": {"male": "сказал, что у него всё получится", "female": "сказала, что у него всё получится", "emoji": "🎯"},
+    "спокойно": {"male": "спокойно с", "female": "спокойно с", "emoji": "😌"},
+    "уверена": {"male": "уверен в", "female": "уверена в", "emoji": "✨"},
+    "взять за руку": {"male": "взял за руку", "female": "взяла за руку", "emoji": "🤝"},
+    "похлопать": {"male": "похлопал по плечу", "female": "похлопала по плечу", "emoji": "🫱"},
+    "дать пять": {"male": "дал пять", "female": "дала пять", "emoji": "🙌"},
+    "подмигнуть": {"male": "подмигнул", "female": "подмигнула", "emoji": "😉"},
+    "комплимент": {"male": "сделал комплимент", "female": "сделала комплимент", "emoji": "🥰"},
+    "воздушный поцелуй": {"male": "послал воздушный поцелуй", "female": "послала воздушный поцелуй", "emoji": "💋"},
+    "прижаться": {"male": "прижался к", "female": "прижалась к", "emoji": "🫶"},
+    "укутать": {"male": "укутал пледом", "female": "укутала пледом", "emoji": "🛌"},
+    "угостить чаем": {"male": "угостил чаем", "female": "угостила чаем", "emoji": "☕️"},
+    "поделиться сладостями": {"male": "поделился сладостями с", "female": "поделилась сладостями с", "emoji": "🍫"},
+    "подарить подарок": {"male": "подарил подарок", "female": "подарила подарок", "emoji": "🎁"},
+    "пригласить на свидание": {"male": "пригласил на свидание", "female": "пригласила на свидание", "emoji": "💌"},
+    "признаться в любви": {"male": "признался в любви", "female": "призналась в любви", "emoji": "❤️"},
+    "сделать предложение": {"male": "сделал предложение", "female": "сделала предложение", "emoji": "💎"},
+    "расстаться": {"male": "расстался с", "female": "рассталась с", "emoji": "💔"},
+    "развестись": {"male": "развелся с", "female": "развелась с", "emoji": "📄"},
+    "подружиться": {"male": "подружился с", "female": "подружилась с", "emoji": "🤝🏻"},
+    "помириться": {"male": "помирился с", "female": "помирилась с", "emoji": "🕊"},
+    "поддержать": {"male": "поддержал", "female": "поддержала", "emoji": "💞"},
+    "поблагодарить": {"male": "поблагодарил", "female": "поблагодарила", "emoji": "🙏"},
+    "поклониться": {"male": "поклонился", "female": "поклонилась", "emoji": "🙇"},
+    "поприветствовать": {"male": "поприветствовал", "female": "поприветствовала", "emoji": "👋"},
+    "попрощаться": {"male": "попрощался с", "female": "попрощалась с", "emoji": "😔"},
+    "рассмешить": {"male": "рассмешил", "female": "рассмешила", "emoji": "😹"},
+    "напугать": {"male": "напугал", "female": "напугала", "emoji": "👻"},
+    "пощекотать": {"male": "пощекотал", "female": "пощекотала", "emoji": "🪶"},
+    "ткнуть": {"male": "ткнул", "female": "ткнула", "emoji": "👉"},
+    "ущипнуть": {"male": "ущипнул", "female": "ущипнула", "emoji": "🤏"},
+    "потрепать": {"male": "потрепал за щёки", "female": "потрепала за щёки", "emoji": "😊"},
+    "взъерошить": {"male": "взъерошил волосы", "female": "взъерошила волосы", "emoji": "💇"},
+    "показать язык": {"male": "показал язык", "female": "показала язык", "emoji": "😛"},
+    "подразнить": {"male": "подразнил", "female": "подразнила", "emoji": "😜"},
+    "кинуть подушкой": {"male": "кинул подушкой в", "female": "кинула подушкой в", "emoji": "🛏"},
+    "облить водой": {"male": "облил водой", "female": "облила водой", "emoji": "💦"},
+    "накормить": {"male": "накормил", "female": "накормила", "emoji": "🍰"},
+    "украсть еду": {"male": "украл еду у", "female": "украла еду у", "emoji": "🍪"},
+    "заснуть на плече": {"male": "заснул на плече", "female": "заснула на плече", "emoji": "😴"},
+    "положить голову": {"male": "положил голову на плечо", "female": "положила голову на плечо", "emoji": "🥹"},
+    "покружить": {"male": "покружил на руках", "female": "покружила на руках", "emoji": "🌀"},
+    "поднять на руки": {"male": "поднял на руки", "female": "подняла на руки", "emoji": "👐"},
+    "толкнуть": {"male": "толкнул", "female": "толкнула", "emoji": "🫸"},
+    "пнуть": {"male": "пнул", "female": "пнула", "emoji": "🦵"},
+    "дать пощёчину": {"male": "дал пощёчину", "female": "дала пощёчину", "emoji": "👋"},
+    "бросить снежок": {"male": "бросил снежок в", "female": "бросила снежок в", "emoji": "☃️"},
+    "вызвать на дуэль": {"male": "вызвал на дуэль", "female": "вызвала на дуэль", "emoji": "⚔️"},
+    "защитить": {"male": "защитил", "female": "защитила", "emoji": "🛡"},
+    "связать": {"male": "связал", "female": "связала", "emoji": "🪢"},
+    "арестовать": {"male": "арестовал", "female": "арестовала", "emoji": "🚓"},
+    "ограбить": {"male": "ограбил", "female": "ограбила", "emoji": "💰"},
+    "проклясть": {"male": "проклял", "female": "прокляла", "emoji": "👿"},
+    "благословить": {"male": "благословил", "female": "благословила", "emoji": "😇"},
+    "исцелить": {"male": "исцелил", "female": "исцелила", "emoji": "❤️‍🩹"},
+    "заморозить": {"male": "заморозил", "female": "заморозила", "emoji": "🧊"},
+    "поджечь": {"male": "поджёг", "female": "подожгла", "emoji": "🔥"},
+    "телепортировать": {"male": "телепортировал", "female": "телепортировала", "emoji": "🌀"},
+    "превратить в кота": {"male": "превратил в кота", "female": "превратила в кота", "emoji": "🐈"},
+    "кинуть заклинание": {"male": "кинул заклинание в", "female": "кинула заклинание в", "emoji": "🪄"},
+    "покормить с рук": {"male": "покормил с рук", "female": "покормила с рук", "emoji": "🍓"},
+    "выпить вместе": {"male": "выпил вместе с", "female": "выпила вместе с", "emoji": "🍻"},
+    "посмотреть фильм": {"male": "посмотрел фильм вместе с", "female": "посмотрела фильм вместе с", "emoji": "🍿"},
+    "позвать гулять": {"male": "позвал гулять", "female": "позвала гулять", "emoji": "🚶"},
+    "сфотографироваться": {"male": "сфотографировался вместе с", "female": "сфотографировалась вместе с", "emoji": "📸"},
+    "поиграть": {"male": "поиграл вместе с", "female": "поиграла вместе с", "emoji": "🎮"},
+    "прошептать на ухо": {"male": "прошептал на ухо", "female": "прошептала на ухо", "emoji": "🤫"},
+    "рассказать секрет": {"male": "рассказал секрет", "female": "рассказала секрет", "emoji": "🤐"},
+    "засмущать": {"male": "засмущал", "female": "засмущала", "emoji": "😳"},
+    "посмотреть с осуждением": {"male": "посмотрел с осуждением на", "female": "посмотрела с осуждением на", "emoji": "🧐"},
+    "накричать": {"male": "накричал на", "female": "накричала на", "emoji": "😡"},
+    "простить": {"male": "простил", "female": "простила", "emoji": "🕊"},
+    "сделать сюрприз": {"male": "сделал сюрприз", "female": "сделала сюрприз", "emoji": "🎊"},
+    "подарить питомца": {"male": "подарил питомца", "female": "подарила питомца", "emoji": "🐈"},
+    "позвать на помощь": {"male": "позвал на помощь", "female": "позвала на помощь", "emoji": "🆘"},
+    "спрятаться": {"male": "спрятался за спиной", "female": "спряталась за спиной", "emoji": "🫣"},
+    "встать на защиту": {"male": "встал на защиту", "female": "встала на защиту", "emoji": "🦸"},
+    "поклясться": {"male": "поклялся в верности", "female": "поклялась в верности", "emoji": "🫡"},
+    "назначить лучшим другом": {"male": "назначил лучшим другом", "female": "назначила лучшим другом", "emoji": "⭐️"},
+    "усыновить": {"male": "усыновил", "female": "усыновила", "emoji": "👨‍👩‍👧"},
+    "заревновать": {"male": "заревновал", "female": "заревновала", "emoji": "😒"},
+    "поднять настроение": {"male": "поднял настроение", "female": "подняла настроение", "emoji": "🌞"},
+    "чокнуться": {"male": "чокнулся бокалами с", "female": "чокнулась бокалами с", "emoji": "🥂"},
 }
 
 # ===== ИНДЕКСЫ БД =====
@@ -327,7 +457,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 title="📖 DotBotRPG",
                 description="Введите: <Действие> @username",
                 input_message_content=InputTextMessageContent(
-                    "📖 <b>DotBotRPG</b>\n\nВведите:\n<code>&lt;Действие&gt; @username</code>\n\nПример:\n<code>Обнять @petya</code>",
+                    "📖 <b>DotBotRPG</b>\n\nВведите:\n<code>&lt;Действие&gt; @username</code>\n\nПример:\n<code>скучаю @petya</code>",
                     parse_mode="HTML"
                 )
             )
@@ -376,49 +506,97 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             action = query_text
 
-    if not target_input:
-        words = query_text.split(" ")
-        for i, w in enumerate(words):
-            if w.startswith("@"):
-                target_input = w[1:]
-                action = " ".join(words[:i]).strip()
-                if not action and i > 0:
-                    action = " ".join(words[:i])
-                break
-
-    if not target_input:
-        action_lower = action.lower()
-        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
-        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
-        matched = list(dict.fromkeys(matched))
-        results = []
-        for act in matched[:5]:
-            emoji = ""
-            if act in DEFAULT_ACTIONS:
-                emoji = DEFAULT_ACTIONS[act]["emoji"]
+    # ===== НОВАЯ ЛОГИКА: ИЩЕМ ВСЕ @username =====
+    words = query_text.split()
+    
+    # Собираем все упоминания (@username)
+    mentions = []
+    action_words = []
+    
+    for word in words:
+        if word.startswith("@"):
+            mentions.append(word[1:])  # убираем @
+        else:
+            action_words.append(word)
+    
+    # Если есть упоминания
+    if mentions:
+        # Если одно упоминание — это цель
+        if len(mentions) == 1:
+            target_input = mentions[0]
+        # Если несколько — склеиваем через "и"
+        else:
+            # Получаем имена целей
+            target_names = []
+            for username in mentions:
+                name = get_user_display_name(username)
+                if name == username:
+                    try:
+                        chat = await context.bot.get_chat(f"@{username}")
+                        if chat and chat.first_name:
+                            name = chat.first_name
+                    except Exception:
+                        pass
+                target_names.append(name)
+            
+            # Соединяем через " и "
+            if len(target_names) == 2:
+                target_input = f"{target_names[0]} и {target_names[1]}"
             else:
-                for c in custom:
-                    if c[1] == act:
-                        emoji = c[4] or ""
-                        break
-            results.append(InlineQueryResultArticle(
-                id=act,
-                title=f"{emoji} {act.capitalize()}",
-                description=f"{act} @username",
-                input_message_content=InputTextMessageContent(f"{act} @username")
-            ))
-        if not results:
-            results = [InlineQueryResultArticle(
-                id="notfound",
-                title="🤖 Ничего не найдено",
-                description="Попробуйте: обнять, поцеловать, ударить...",
+                target_input = ", ".join(target_names[:-1]) + f" и {target_names[-1]}"
+        
+        # Действие — это всё, что было до первого @ (или всё, что не @)
+        action = " ".join(action_words).strip()
+        if not action:
+            # Если действие не указано явно, пробуем найти первое слово из action_words
+            if action_words:
+                action = action_words[0]
+            else:
+                action = "скучаю"  # дефолт
+        
+        # Проверяем, есть ли такое действие в DEFAULT_ACTIONS или кастомных
+        action_lower = action.lower()
+        if action_lower not in DEFAULT_ACTIONS:
+            custom_actions = get_custom_actions(user_id)
+            found = False
+            for c in custom_actions:
+                if c[1].lower() == action_lower:
+                    found = True
+                    break
+            if not found:
+                # Если действия нет — предлагаем автодополнение
+                all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom_actions]
+                matched = [a for a in all_actions if a.lower().startswith(action_lower)]
+                if matched:
+                    action = matched[0]  # берём первое совпадение
+                else:
+                    await update.inline_query.answer([
+                        InlineQueryResultArticle(
+                            id="notfound",
+                            title="🤖 Такого действия нет!",
+                            description=f"Попробуйте: скучаю, люблю, обнимаю...",
+                            input_message_content=InputTextMessageContent(
+                                f"🤖 Действия «{action}» нет.\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                            )
+                        )
+                    ], cache_time=60)
+                    return
+    else:
+        # Если нет ни одного @
+        await update.inline_query.answer([
+            InlineQueryResultArticle(
+                id="no_target",
+                title="🤖 Укажите цель",
+                description="Напишите: @dot_bbot скучаю @username",
                 input_message_content=InputTextMessageContent(
-                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
+                    "🤖 **Укажите цель**\n\nНапишите:\n`@dot_bbot скучаю @username`",
+                    parse_mode="Markdown"
                 )
-            )]
-        await update.inline_query.answer(results, cache_time=60)
+            )
+        ], cache_time=60)
         return
 
+    # ===== ПОЛУЧАЕМ ИНФОРМАЦИЮ О ТОМ, КТО ПИШЕТ =====
     sender_gender = "male"
     sender_name = "Пользователь"
     user = get_user(user_id)
@@ -439,14 +617,19 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
-    target_display_name = get_user_display_name(target_input)
-    if target_display_name == target_input:
-        try:
-            chat = await context.bot.get_chat(f"@{target_input}")
-            if chat and chat.first_name:
-                target_display_name = chat.first_name
-        except Exception:
-            pass
+    # Если цель — это уже скомбинированная строка (несколько имён через "и")
+    # то не пытаемся её получить через get_chat
+    if " и " in target_input:
+        target_display_name = target_input
+    else:
+        target_display_name = get_user_display_name(target_input)
+        if target_display_name == target_input:
+            try:
+                chat = await context.bot.get_chat(f"@{target_input}")
+                if chat and chat.first_name:
+                    target_display_name = chat.first_name
+            except Exception:
+                pass
 
     sender_name_f = _format_name(sender_name)
     target_name_f = _format_name(target_display_name)
@@ -455,7 +638,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action_found = None
     emoji = ""
 
-    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ (используем target_name_f) =====
+    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ =====
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -495,7 +678,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         InlineQueryResultArticle(
             id="notfound",
             title="🤖 Такого действия нет!",
-            description="Попробуйте: обнять, поцеловать, ударить, погладить",
+            description="Попробуйте: скучаю, люблю, обнимаю, заебал...",
             input_message_content=InputTextMessageContent(
                 "🤖 Такого действия нет!\n\nДоступные действия:\n" + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
             )
@@ -578,7 +761,8 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
             [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")],
+            [InlineKeyboardButton("📋 Стандартные действия", url="https://telegra.ph/Spisok-standartnyh-dejstvij-DotBotRPG-07-28")]
         ]
     else:
         keyboard = [
@@ -586,7 +770,8 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")],
+            [InlineKeyboardButton("📋 Стандартные действия", url="https://telegra.ph/Spisok-standartnyh-dejstvij-DotBotRPG-07-28")]
         ]
 
     text = _build_menu_text(
@@ -618,7 +803,8 @@ async def show_main_menu_from_query(query):
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
             [InlineKeyboardButton("👥 Пользователи", callback_data="users"),
-             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")],
+            [InlineKeyboardButton("📋 Стандартные действия", url="https://telegra.ph/Spisok-standartnyh-dejstvij-DotBotRPG-07-28")]
         ]
     else:
         keyboard = [
@@ -626,7 +812,8 @@ async def show_main_menu_from_query(query):
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
              InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")],
+            [InlineKeyboardButton("📋 Стандартные действия", url="https://telegra.ph/Spisok-standartnyh-dejstvij-DotBotRPG-07-28")]
         ]
 
     text = _build_menu_text(
@@ -830,7 +1017,7 @@ async def all_actions_menu(query):
         "",
         "📌 <b>Как использовать:</b>",
         "В любом чате напишите:",
-        "<code>Обнять @username</code>"
+        "<code>скучаю @username</code>"
     ])
 
     text = _build_menu_text("Доступные действия", lines)
@@ -1592,10 +1779,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.extend([
         "",
         "📌 <b>Инлайн-режим (в чатах):</b>",
-        "@DotBotRPG_bot <Действие> @username",
+        "@dot_bbot <Действие> @username",
         "",
-        "📌 <b>Встроенные действия (20 шт.):</b>",
-        ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
+        "📌 <b>Встроенные действия (150 шт.):</b>",
+        "Полный список: https://telegra.ph/Spisok-standartnyh-dejstvij-DotBotRPG-07-28"
     ])
     text = _build_menu_text("DotBotRPG — помощь", lines)
     await update.message.reply_text(text, parse_mode="HTML")
