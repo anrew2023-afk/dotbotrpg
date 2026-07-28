@@ -136,13 +136,6 @@ def update_user_name(user_id, name):
     conn.commit()
     conn.close()
 
-def reset_user_name(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE users SET custom_name = '' WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-
 def is_trusted(user_id):
     if user_id == CREATOR_ID:
         return True
@@ -166,21 +159,6 @@ def get_custom_actions(user_id=None):
     actions = c.fetchall()
     conn.close()
     return actions
-
-def get_custom_actions_paginated(user_id, page, page_size=PAGE_SIZE):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    offset = (page - 1) * page_size
-    c.execute("""SELECT id, trigger, response_male, response_female, emoji, uses 
-                 FROM custom_actions 
-                 WHERE owner_id = ? 
-                 ORDER BY id 
-                 LIMIT ? OFFSET ?""", (user_id, page_size, offset))
-    actions = c.fetchall()
-    c.execute("SELECT COUNT(*) FROM custom_actions WHERE owner_id = ?", (user_id,))
-    total = c.fetchone()[0]
-    conn.close()
-    return actions, total
 
 def add_custom_action(owner_id, trigger, response_male, response_female, emoji=""):
     conn = sqlite3.connect(DB_PATH)
@@ -213,17 +191,6 @@ def get_allowed_users():
     conn.close()
     return [u[0] for u in users]
 
-def get_allowed_users_paginated(page, page_size=PAGE_SIZE):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    offset = (page - 1) * page_size
-    c.execute("SELECT user_id FROM allowed_users ORDER BY user_id LIMIT ? OFFSET ?", (page_size, offset))
-    users = c.fetchall()
-    c.execute("SELECT COUNT(*) FROM allowed_users")
-    total = c.fetchone()[0]
-    conn.close()
-    return [u[0] for u in users], total
-
 def add_allowed_user(user_id, added_by):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -246,17 +213,6 @@ def get_premium_users():
     users = c.fetchall()
     conn.close()
     return users
-
-def get_premium_users_paginated(page, page_size=PAGE_SIZE):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    offset = (page - 1) * page_size
-    c.execute("SELECT user_id, premium_until FROM users WHERE is_premium = TRUE ORDER BY user_id LIMIT ? OFFSET ?", (page_size, offset))
-    users = c.fetchall()
-    c.execute("SELECT COUNT(*) FROM users WHERE is_premium = TRUE")
-    total = c.fetchone()[0]
-    conn.close()
-    return users, total
 
 def set_premium(user_id, until=None):
     conn = sqlite3.connect(DB_PATH)
@@ -309,14 +265,6 @@ def get_user_display_name(username):
             return result[1]
     return username
 
-def get_user_id_by_username(username):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM user_names WHERE username = ?", (username,))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else None
-
 # ===== УТИЛИТЫ =====
 def _format_name(name):
     return f"<b><u>{name}</u></b>"
@@ -337,6 +285,7 @@ def normalize_username_placeholders(text):
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
+    chat_type = update.inline_query.chat_type  # "private" или "group"
 
     if not check_access(user_id):
         await update.inline_query.answer([], cache_time=0)
@@ -408,39 +357,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     action = " ".join(words[:i])
                 break
 
-    if not target_input:
-        action_lower = action.lower()
-        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
-        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
-        matched = list(dict.fromkeys(matched))
-        results = []
-        for act in matched[:5]:
-            emoji = ""
-            if act in DEFAULT_ACTIONS:
-                emoji = DEFAULT_ACTIONS[act]["emoji"]
-            else:
-                for c in custom:
-                    if c[1] == act:
-                        emoji = c[4] or ""
-                        break
-            results.append(InlineQueryResultArticle(
-                id=act,
-                title=f"{emoji} {act.capitalize()}",
-                description=f"{act} @username",
-                input_message_content=InputTextMessageContent(f"{act} @username")
-            ))
-        if not results:
-            results = [InlineQueryResultArticle(
-                id="notfound",
-                title="🤖 Ничего не найдено",
-                description="Попробуйте: обнять, поцеловать, ударить...",
-                input_message_content=InputTextMessageContent(
-                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
-                )
-            )]
-        await update.inline_query.answer(results, cache_time=60)
-        return
-
+    # ===== ОПРЕДЕЛЯЕМ ЦЕЛЬ =====
     sender_gender = "male"
     sender_name = "Пользователь"
     user = get_user(user_id)
@@ -460,16 +377,55 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
-    # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
-    target_display_name = get_user_display_name(target_input)
-    
-    if target_display_name == target_input:
+    target_display_name = None
+    target_id = None
+
+    # ===== ЕСЛИ В ЛС — АВТОМАТИЧЕСКИ ОПРЕДЕЛЯЕМ СОБЕСЕДНИКА =====
+    if chat_type == "private":
         try:
-            chat = await context.bot.get_chat(f"@{target_input}")
-            if chat and chat.first_name:
-                target_display_name = chat.first_name
-        except Exception:
-            pass
+            # В ЛС chat_id = ID собеседника
+            target_user_id = update.inline_query.chat_id
+            target_user = await context.bot.get_chat(target_user_id)
+            if target_user and target_user.first_name:
+                target_display_name = target_user.first_name
+                if target_user.last_name:
+                    target_display_name += " " + target_user.last_name
+                target_id = target_user.id
+            else:
+                target_display_name = "Собеседник"
+        except Exception as e:
+            target_display_name = "Собеседник"
+    else:
+        # В ГРУППЕ — нужно указывать @username
+        if not target_input:
+            await update.inline_query.answer([
+                InlineQueryResultArticle(
+                    id="hint",
+                    title="❌ Укажите получателя",
+                    description="В группах нужно указывать @username",
+                    input_message_content=InputTextMessageContent(
+                        "❌ В группах нужно указывать @username\n\nПример: обнять @petya"
+                    )
+                )
+            ], cache_time=60)
+            return
+        
+        # Пытаемся найти имя по @username
+        target_display_name = get_user_display_name(target_input)
+        if target_display_name == target_input:
+            try:
+                target_user = await context.bot.get_chat(f"@{target_input}")
+                if target_user and target_user.first_name:
+                    target_display_name = target_user.first_name
+                    if target_user.last_name:
+                        target_display_name += " " + target_user.last_name
+                    target_id = target_user.id
+            except Exception:
+                target_display_name = target_input
+
+    # Если в ЛС и нет действия — показываем подсказку
+    if not target_display_name:
+        target_display_name = target_input or "Собеседник"
 
     sender_name_f = _format_name(sender_name)
     target_name_f = _format_name(target_display_name)
@@ -486,10 +442,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             emoji = c[4] or ""
             template = template.replace("Username1", sender_name_f)
             template = template.replace("Username2", target_name_f)
-            if emoji:
-                response = f"{emoji} | <b>{template}</b>"
-            else:
-                response = f"<b>{template}</b>"
+            response = f"{emoji} | <b>{template}</b>"
             conn = sqlite3.connect(DB_PATH)
             conn.execute("UPDATE custom_actions SET uses = uses + 1 WHERE id = ?", (c[0],))
             conn.commit()
@@ -506,16 +459,11 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if response:
         log_action(user_id, action_found, target_display_name)
-        clean_description = response
-        clean_description = clean_description.replace("<b>", "").replace("</b>", "")
-        clean_description = clean_description.replace("<u>", "").replace("</u>", "")
-        clean_description = clean_description.replace("|", "").strip()
-        
         await update.inline_query.answer([
             InlineQueryResultArticle(
                 id=action_found,
                 title=f"{action_found.capitalize()} → {target_display_name}",
-                description=clean_description[:100],
+                description=response.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", ""),
                 input_message_content=InputTextMessageContent(response, parse_mode="HTML")
             )
         ], cache_time=0)
@@ -550,14 +498,14 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await create_action_input(update, context)
     elif state.get("changing_name"):
         await handle_name_input(update, context)
-    elif state.get("removing_name"):
-        await handle_remove_name(update, context)
     elif state.get("adding_user"):
         await add_user_input(update, context)
     elif state.get("giving_premium"):
         await give_premium_input(update, context)
     elif state.get("removing_premium"):
         await remove_premium_input(update, context)
+    elif state.get("creating_action_emoji"):
+        await handle_emoji_input(update, context)
 
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -612,11 +560,10 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions"),
+            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
-             InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
 
     text = _build_menu_text(
@@ -652,11 +599,10 @@ async def show_main_menu_from_query(query):
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("📋 Мои действия", callback_data="my_actions"),
+            [InlineKeyboardButton("📋 Все действия", callback_data="all_actions"),
              InlineKeyboardButton("⚙️ Настройки", callback_data="settings")],
             [InlineKeyboardButton("➕ Создать действие", callback_data="create_action"),
-             InlineKeyboardButton("🗑️ Удалить действие", callback_data="delete_action")],
-            [InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
+             InlineKeyboardButton("⭐ Премиум", callback_data="premium")]
         ]
 
     text = _build_menu_text(
@@ -705,8 +651,6 @@ async def settings_menu(query):
     keyboard = []
     if is_prem or role == "creator":
         keyboard.append([InlineKeyboardButton("✏️ Изменить имя", callback_data="change_name")])
-        if user[U_CUSTOM_NAME]:
-            keyboard.append([InlineKeyboardButton("🗑️ Удалить имя", callback_data="remove_name")])
     keyboard.append([InlineKeyboardButton("🔄 Сменить пол", callback_data="change_gender")])
     keyboard.append([InlineKeyboardButton("📊 Статистика", callback_data="stats")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
@@ -764,33 +708,6 @@ async def handle_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_user_name(user_id, new_name)
     context.user_data["changing_name"] = False
     await update.message.reply_text(f"✅ Имя изменено на <b>&quot;{new_name}&quot;</b>!", parse_mode="HTML")
-    await show_main_menu(update, context)
-
-async def remove_name_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    if not check_access(user_id):
-        await query.edit_message_text("❌ Доступ запрещён")
-        return
-    user = get_user(user_id)
-    if not user or (not user[U_IS_PREMIUM] and user[U_ROLE] != "creator"):
-        await query.edit_message_text("🔒 Удаление имени доступно только в Премиум-версии.")
-        return
-    if not user[U_CUSTOM_NAME]:
-        await query.edit_message_text("❌ У вас нет кастомного имени для удаления.")
-        return
-
-    reset_user_name(user_id)
-    await query.edit_message_text("✅ Кастомное имя удалено. Теперь используется <b>first_name</b>!", parse_mode="HTML")
-    await settings_menu(query)
-
-async def handle_remove_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not check_access(user_id):
-        return
-    if not context.user_data.get("removing_name"):
-        return
-    context.user_data["removing_name"] = False
     await show_main_menu(update, context)
 
 async def change_gender_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -880,51 +797,26 @@ async def all_actions_menu(query):
     keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def my_actions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
+async def my_actions_menu(query):
     user_id = query.from_user.id
     if not check_access(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
 
-    page = context.user_data.get("my_actions_page", 1)
-    await show_my_actions_page(query, context, page)
-
-async def show_my_actions_page(query, context, page):
-    user_id = query.from_user.id
-    actions, total = get_custom_actions_paginated(user_id, page)
-    
-    if total == 0:
+    custom = get_custom_actions(user_id)
+    if not custom:
         lines = [
             "У вас нет кастомных действий.",
             "",
             'Создайте первое через <b>➕ Создать действие</b>.'
         ]
-        text = _build_menu_text("Ваши действия", lines)
-        keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
-        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-
-    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-    
-    lines = []
-    for i, c in enumerate(actions, (page - 1) * PAGE_SIZE + 1):
-        lines.append(f"{i}. {c[1].capitalize()} (использовано: {c[5]} раз)")
+    else:
+        lines = []
+        for i, c in enumerate(custom, 1):
+            lines.append(f"{i}. {c[1].capitalize()} (использовано: {c[5]} раз)")
 
     text = _build_menu_text("Ваши действия", lines)
-    
-    keyboard = []
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"my_actions_page_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"my_actions_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-
-    context.user_data["my_actions_page"] = page
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="back")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def create_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1085,7 +977,7 @@ async def create_action_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     if "creating_action" not in context.user_data:
@@ -1106,35 +998,39 @@ async def skip_emoji(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def delete_action_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     await show_delete_page(query, context, 1)
 
 async def show_delete_page(query, context, page):
     user_id = query.from_user.id
-    actions, total = get_custom_actions_paginated(user_id, page)
-    
-    if total == 0:
+    custom = get_custom_actions(user_id)
+    if not custom:
         await query.edit_message_text("📋 У вас нет кастомных действий для удаления.")
         return
 
+    total = len(custom)
     total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
     if page < 1:
         page = 1
     if page > total_pages:
         page = total_pages
 
+    start = (page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
+    page_actions = custom[start:end]
+
     keyboard = []
-    for c in actions:
+    for c in page_actions:
         keyboard.append([InlineKeyboardButton(f"🗑️ {c[1].capitalize()}", callback_data=f"delete_{c[0]}")])
 
     nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"delpage_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
+        nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"delpage_{page-1}"))
+    nav_buttons.append(InlineKeyboardButton(f"📄 {page}/{total_pages}", callback_data="noop"))
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"delpage_{page+1}"))
+        nav_buttons.append(InlineKeyboardButton("Вперёд ➡️", callback_data=f"delpage_{page+1}"))
 
     if nav_buttons:
         keyboard.append(nav_buttons)
@@ -1154,10 +1050,16 @@ async def show_delete_page(query, context, page):
 async def delete_action_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     action_id = int(query.data.split("_")[1])
+    custom = get_custom_actions(user_id)
+    action_name = None
+    for c in custom:
+        if c[0] == action_id:
+            action_name = c[1]
+            break
     delete_custom_action(action_id)
     page = context.user_data.get("delete_page", 1)
     await show_delete_page(query, context, page)
@@ -1165,7 +1067,7 @@ async def delete_action_confirm(update: Update, context: ContextTypes.DEFAULT_TY
 async def delete_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    if not check_access(user_id):
+    if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
     page = int(query.data.split("_")[1])
@@ -1177,47 +1079,25 @@ async def users_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    
-    page = context.user_data.get("users_page", 1)
-    await show_users_page(query, context, page)
-
-async def show_users_page(query, context, page):
-    user_id = query.from_user.id
-    if not check_access(user_id) or not is_creator(user_id):
-        await query.edit_message_text("❌ Доступ запрещён")
-        return
-    
-    allowed, total = get_allowed_users_paginated(page)
-    
+    allowed = get_allowed_users()
     lines = ["👥 <b>Доверенные пользователи</b>"]
-    if total == 0:
+    if not allowed:
         lines.append("Список пуст.")
     else:
-        for i, uid in enumerate(allowed, (page - 1) * PAGE_SIZE + 1):
+        for i, uid in enumerate(allowed[:10], 1):
             u = get_user(uid)
             name = u[U_FIRST_NAME] if u else str(uid)
             premium = "⭐ Премиум" if u and u[U_IS_PREMIUM] else "🔰 Бесплатный"
             lines.append(f"{i}. {name} (ID: {uid}) — {premium}")
+        if len(allowed) > 10:
+            lines.append(f"... и ещё {len(allowed) - 10} пользователей")
 
-    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 1
     text = _build_menu_text("Пользователи", lines)
-    
-    keyboard = []
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"users_page_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"users_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([
-        InlineKeyboardButton("➕ Добавить", callback_data="add_user"),
-        InlineKeyboardButton("➖ Удалить", callback_data="remove_user")
-    ])
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-
-    context.user_data["users_page"] = page
+    keyboard = [
+        [InlineKeyboardButton("➕ Добавить", callback_data="add_user"),
+         InlineKeyboardButton("➖ Удалить", callback_data="remove_user")],
+        [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+    ]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def add_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1229,7 +1109,7 @@ async def add_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = _build_menu_text(
         "Добавление пользователя",
         [
-            "Введите <b>ID</b> пользователя.",
+            "Введите ID или @username пользователя.",
             "",
             "Напишите /cancel для отмены"
         ]
@@ -1249,10 +1129,17 @@ async def add_user_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
-    if not text.isdigit():
-        await update.message.reply_text("❌ Введите корректный ID пользователя (только цифры).")
+    if text.startswith("@"):
+        text = text[1:]
+    try:
+        if text.isdigit():
+            target_id = int(text)
+        else:
+            target = await context.bot.get_chat(f"@{text}")
+            target_id = target.id
+    except Exception:
+        await update.message.reply_text("❌ Пользователь не найден.")
         return
-    target_id = int(text)
     if target_id == CREATOR_ID:
         await update.message.reply_text("❌ Вы не можете добавить самого себя.")
         return
@@ -1270,42 +1157,17 @@ async def remove_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    
-    page = context.user_data.get("remove_user_page", 1)
-    await show_remove_user_page(query, context, page)
-
-async def show_remove_user_page(query, context, page):
-    user_id = query.from_user.id
-    if not check_access(user_id) or not is_creator(user_id):
-        await query.edit_message_text("❌ Доступ запрещён")
-        return
-    
-    allowed, total = get_allowed_users_paginated(page)
+    allowed = get_allowed_users()
     allowed = [u for u in allowed if u != CREATOR_ID]
-    total = len(allowed)
-    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 1
-    
-    if total == 0:
+    if not allowed:
         await query.edit_message_text("👥 Нет пользователей для удаления.")
         return
-    
     keyboard = []
-    for i, uid in enumerate(allowed[:PAGE_SIZE], (page - 1) * PAGE_SIZE + 1):
+    for uid in allowed[:10]:
         u = get_user(uid)
         name = u[U_FIRST_NAME] if u else str(uid)
-        keyboard.append([InlineKeyboardButton(f"❌ {i}. {name}", callback_data=f"remove_{uid}")])
-
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"remove_user_page_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"remove_user_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
+        keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"remove_{uid}")])
     keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-
-    context.user_data["remove_user_page"] = page
     text = _build_menu_text("Удаление пользователя", ["Выберите пользователя:"])
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -1318,8 +1180,7 @@ async def remove_user_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     target_id = int(query.data.split("_")[1])
     remove_allowed_user(target_id)
     await query.edit_message_text("✅ Доступ отозван.")
-    page = context.user_data.get("remove_user_page", 1)
-    await show_remove_user_page(query, context, page)
+    await remove_user_start(update, context)
 
 async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1331,8 +1192,23 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
     if user[U_ROLE] == "creator":
-        page = context.user_data.get("premium_list_page", 1)
-        await show_premium_list_page(query, context, page)
+        premium_users = get_premium_users()
+        free_users = len(get_allowed_users()) - len(premium_users)
+        lines = [
+            "👑 <b>Ваш статус:</b> Создатель",
+            f"📊 <b>Премиум-пользователей:</b> {len(premium_users)}",
+            f"📊 <b>Бесплатных пользователей:</b> {free_users}",
+            "",
+            "<b>Управление:</b>"
+        ]
+        text = _build_menu_text("Премиум-система", lines)
+        keyboard = [
+            [InlineKeyboardButton("📋 Список премиум", callback_data="premium_list")],
+            [InlineKeyboardButton("⭐ Выдать премиум", callback_data="give_premium")],
+            [InlineKeyboardButton("❌ Забрать премиум", callback_data="remove_premium")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+        ]
+        await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     if user[U_IS_PREMIUM]:
@@ -1365,53 +1241,28 @@ async def premium_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("💳 Оплатить 199 ₽ (месяц)", callback_data="pay_month")],
             [InlineKeyboardButton("💳 Оплатить 1 490 ₽ (навсегда)", callback_data="pay_forever")],
-            [InlineKeyboardButton("🔙 Назад", callback_data="back")] if not user[U_IS_PREMIUM] else []
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
         ]
-        keyboard = [row for row in keyboard if row]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def show_premium_list_page(query, context, page):
+async def premium_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     user_id = query.from_user.id
     if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    
-    premium_users, total = get_premium_users_paginated(page)
-    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 1
-    
-    lines = [
-        "👑 <b>Ваш статус:</b> Создатель",
-        f"📊 <b>Премиум-пользователей:</b> {total}",
-        "",
-        "<b>Список премиум:</b>"
-    ]
-    if total == 0:
-        lines.append("Нет премиум-пользователей.")
-    else:
-        for i, (uid, until) in enumerate(premium_users, (page - 1) * PAGE_SIZE + 1):
-            u = get_user(uid)
-            name = u[U_FIRST_NAME] if u else str(uid)
-            status = "навсегда" if until is None else until[:10]
-            lines.append(f"{i}. {name} — {status}")
-
-    text = _build_menu_text("Премиум-система", lines)
-    
-    keyboard = []
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"premium_list_page_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"premium_list_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([
-        InlineKeyboardButton("⭐ Выдать премиум", callback_data="give_premium"),
-        InlineKeyboardButton("❌ Забрать премиум", callback_data="remove_premium")
-    ])
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back")])
-
-    context.user_data["premium_list_page"] = page
+    premium_users = get_premium_users()
+    if not premium_users:
+        await query.edit_message_text("📋 Премиум-пользователей нет.")
+        return
+    lines = []
+    for uid, until in premium_users:
+        u = get_user(uid)
+        name = u[U_FIRST_NAME] if u else str(uid)
+        status = "навсегда" if until is None else until[:10]
+        lines.append(f"• {name} — {status}")
+    text = _build_menu_text("Премиум-пользователи", lines)
+    keyboard = [[InlineKeyboardButton("🔙 Назад", callback_data="premium")]]
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def give_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1423,7 +1274,7 @@ async def give_premium_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     text = _build_menu_text(
         "Выдача премиум",
         [
-            "Введите <b>ID</b> пользователя.",
+            "Введите ID или @username пользователя.",
             "",
             "Напишите /cancel для отмены"
         ]
@@ -1443,10 +1294,17 @@ async def give_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
-    if not text.isdigit():
-        await update.message.reply_text("❌ Введите корректный ID пользователя (только цифры).")
+    if text.startswith("@"):
+        text = text[1:]
+    try:
+        if text.isdigit():
+            target_id = int(text)
+        else:
+            target = await context.bot.get_chat(f"@{text}")
+            target_id = target.id
+    except Exception:
+        await update.message.reply_text("❌ Пользователь не найден.")
         return
-    target_id = int(text)
     keyboard = [
         [InlineKeyboardButton("📅 1 месяц", callback_data=f"premium_month_{target_id}")],
         [InlineKeyboardButton("♾️ Навсегда", callback_data=f"premium_forever_{target_id}")],
@@ -1478,54 +1336,16 @@ async def remove_premium_start(update: Update, context: ContextTypes.DEFAULT_TYP
     if not check_access(user_id) or not is_creator(user_id):
         await query.edit_message_text("❌ Доступ запрещён")
         return
-    
-    page = context.user_data.get("remove_premium_page", 1)
-    await show_remove_premium_page(query, context, page)
-
-async def show_remove_premium_page(query, context, page):
-    user_id = query.from_user.id
-    if not check_access(user_id) or not is_creator(user_id):
-        await query.edit_message_text("❌ Доступ запрещён")
-        return
-    
-    premium_users, total = get_premium_users_paginated(page)
-    total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total > 0 else 1
-    
-    if total == 0:
-        await query.edit_message_text("📋 Нет премиум-пользователей для отзыва.")
-        return
-    
-    keyboard = []
-    for i, (uid, until) in enumerate(premium_users, (page - 1) * PAGE_SIZE + 1):
-        u = get_user(uid)
-        name = u[U_FIRST_NAME] if u else str(uid)
-        keyboard.append([InlineKeyboardButton(f"❌ {i}. {name}", callback_data=f"remove_premium_confirm_{uid}")])
-
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton("◀️", callback_data=f"remove_premium_page_{page-1}"))
-    nav_buttons.append(InlineKeyboardButton(f"{page}/{total_pages}", callback_data="noop"))
-    if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton("▶️", callback_data=f"remove_premium_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="premium")])
-
-    context.user_data["remove_premium_page"] = page
-    text = _build_menu_text("Отзыв премиум", ["Выберите пользователя:"])
-    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def remove_premium_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    user_id = query.from_user.id
-    if not check_access(user_id) or not is_creator(user_id):
-        await query.edit_message_text("❌ Доступ запрещён")
-        return
-    target_id = int(query.data.split("_")[2])
-    remove_premium(target_id)
-    await query.edit_message_text("✅ Премиум отозван!")
-    page = context.user_data.get("remove_premium_page", 1)
-    await show_remove_premium_page(query, context, page)
+    text = _build_menu_text(
+        "Отзыв премиум",
+        [
+            "Введите ID или @username пользователя.",
+            "",
+            "Напишите /cancel для отмены"
+        ]
+    )
+    await query.edit_message_text(text, parse_mode="HTML")
+    context.user_data["removing_premium"] = True
 
 async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1539,10 +1359,17 @@ async def remove_premium_input(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ Отменено")
         await show_main_menu(update, context)
         return
-    if not text.isdigit():
-        await update.message.reply_text("❌ Введите корректный ID пользователя (только цифры).")
+    if text.startswith("@"):
+        text = text[1:]
+    try:
+        if text.isdigit():
+            target_id = int(text)
+        else:
+            target = await context.bot.get_chat(f"@{text}")
+            target_id = target.id
+    except Exception:
+        await update.message.reply_text("❌ Пользователь не найден.")
         return
-    target_id = int(text)
     remove_premium(target_id)
     context.user_data.pop("removing_premium", None)
     await update.message.reply_text("✅ Премиум отозван!")
@@ -1578,8 +1405,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await change_gender_set(update, context)
     elif data == "change_name":
         await change_name_start(update, context)
-    elif data == "remove_name":
-        await remove_name_start(update, context)
     elif data == "stats":
         await show_stats(update, context)
     elif data == "create_action":
@@ -1590,21 +1415,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await delete_action_confirm(update, context)
     elif data.startswith("delpage_"):
         await delete_page_handler(update, context)
-    elif data.startswith("my_actions_page_"):
-        page = int(data.split("_")[3])
-        await show_my_actions_page(query, context, page)
-    elif data.startswith("users_page_"):
-        page = int(data.split("_")[2])
-        await show_users_page(query, context, page)
-    elif data.startswith("remove_user_page_"):
-        page = int(data.split("_")[3])
-        await show_remove_user_page(query, context, page)
-    elif data.startswith("premium_list_page_"):
-        page = int(data.split("_")[3])
-        await show_premium_list_page(query, context, page)
-    elif data.startswith("remove_premium_page_"):
-        page = int(data.split("_")[3])
-        await show_remove_premium_page(query, context, page)
     elif data == "users":
         await users_menu(update, context)
     elif data == "add_user":
@@ -1616,15 +1426,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "skip_emoji":
         await skip_emoji(update, context)
     elif data == "premium_list":
-        await premium_menu(update, context)
+        await premium_list(update, context)
     elif data == "give_premium":
         await give_premium_start(update, context)
     elif data.startswith("premium_month_") or data.startswith("premium_forever_"):
         await give_premium_confirm(update, context)
     elif data == "remove_premium":
         await remove_premium_start(update, context)
-    elif data.startswith("remove_premium_confirm_"):
-        await remove_premium_confirm(update, context)
     elif data == "noop":
         pass
 
@@ -1655,7 +1463,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.extend([
         "",
         "📌 <b>Инлайн-режим (в чатах):</b>",
-        "@DotBotRPG_bot <Действие> @username",
+        "В ЛС: @DotBotRPG_bot <Действие>",
+        "В группах: @DotBotRPG_bot <Действие> @username",
         "",
         "📌 <b>Встроенные действия (20 шт.):</b>",
         ", ".join([a.capitalize() for a in DEFAULT_ACTIONS.keys()])
@@ -1700,14 +1509,12 @@ async def main():
     print("✅ Бот готов к работе!")
     print("=" * 50)
 
-    # Запуск через initialize + start + polling
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    
-    # Ожидаем завершения
+
     while True:
-        await asyncio.sleep(3600)
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
