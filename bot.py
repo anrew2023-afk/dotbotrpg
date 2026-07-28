@@ -309,14 +309,6 @@ def get_user_display_name(username):
             return result[1]
     return username
 
-def get_user_by_id(user_id):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id, first_name, custom_name, username FROM user_names WHERE user_id = ?", (user_id,))
-    result = c.fetchone()
-    conn.close()
-    return result
-
 def get_user_id_by_username(username):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -566,8 +558,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await give_premium_input(update, context)
     elif state.get("removing_premium"):
         await remove_premium_input(update, context)
-    elif state.get("creating_action_emoji"):
-        await handle_emoji_input(update, context)
 
 # ===== КОМАНДЫ =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1710,7 +1700,7 @@ async def main():
     print("✅ Бот готов к работе!")
     print("=" * 50)
 
-    # Правильный запуск бота
+    # Запуск через run_polling (стандартный способ)
     await app.run_polling()
 
 if __name__ == "__main__":
