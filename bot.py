@@ -1518,6 +1518,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await users_menu(update, context)
     elif data == "add_user":
         await add_user_start(update, context)
+    elif data == "remove_premium":
+        await remove_premium_start(update, context)
     elif data == "remove_user":
         await remove_user_start(update, context)
     elif data.startswith("remove_"):
@@ -1530,8 +1532,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await give_premium_start(update, context)
     elif data.startswith("premium_month_") or data.startswith("premium_forever_"):
         await give_premium_confirm(update, context)
-    elif data == "remove_premium":
-        await remove_premium_start(update, context)
     elif data == "pay_month" or data == "pay_forever":
         await pay_premium_click(update, context)
     elif data == "delete_name":
