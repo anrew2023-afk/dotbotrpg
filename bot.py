@@ -46,7 +46,7 @@ def start_health_server():
     print(f"🩺 Health-check сервер запущен на порту {port}")
     server.serve_forever()
 
-# ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ (150 шт.) =====
+# ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ (150 шт., все формы исправлены) =====
 DEFAULT_ACTIONS = {
     "скучаю": {"male": "скучает по", "female": "скучает по", "emoji": "💭"},
     "заебал": {"male": "заебал", "female": "заебала", "emoji": "😤"},
@@ -54,7 +54,7 @@ DEFAULT_ACTIONS = {
     "отвали": {"male": "отвалил от", "female": "отвалила от", "emoji": "👋"},
     "люблю": {"male": "любит", "female": "любит", "emoji": "❤️"},
     "нахуй": {"male": "послал нахуй", "female": "послала нахуй", "emoji": "🖕"},
-    "лучший": {"male": "сказал, что он лучший", "female": "сказала, что он лучший", "emoji": "⭐"},
+    "лучший": {"male": "сказал Цели, что он лучший", "female": "сказала Цели, что он лучший", "emoji": "⭐"},
     "бесишь": {"male": "бесится на", "female": "бесится на", "emoji": "😡"},
     "рядом": {"male": "рядом с", "female": "рядом с", "emoji": "👥"},
     "надоел": {"male": "надоел", "female": "надоел", "emoji": "😩"},
@@ -62,19 +62,19 @@ DEFAULT_ACTIONS = {
     "заткнись": {"male": "заткнул", "female": "заткнула", "emoji": "🤫"},
     "целую": {"male": "целует", "female": "целует", "emoji": "💋"},
     "пошёл": {"male": "послал нахуй", "female": "послала нахуй", "emoji": "🚫"},
-    "классный": {"male": "сказал, что он классный", "female": "сказала, что он классный", "emoji": "👍"},
+    "классный": {"male": "сказал Цели, что он классный", "female": "сказала Цели, что она классная", "emoji": "👍"},
     "задолбал": {"male": "задолбал", "female": "задолбала", "emoji": "💢"},
-    "крутой": {"male": "сказал, что он крутой", "female": "сказала, что он крутой", "emoji": "🔥"},
+    "крутой": {"male": "сказал Цели, что он крутой", "female": "сказала Цели, что она крутая", "emoji": "🔥"},
     "отъебись": {"male": "отъебался от", "female": "отъебалась от", "emoji": "✋"},
-    "милый": {"male": "сказал, что он милый", "female": "сказала, что он милый", "emoji": "🥰"},
+    "милый": {"male": "сказал Цели, что он милый", "female": "сказала Цели, что она милая", "emoji": "🥰"},
     "завали": {"male": "сказал завалить", "female": "сказала завалить", "emoji": "💀"},
     "соскучился": {"male": "соскучился по", "female": "соскучилась по", "emoji": "😢"},
     "в рот": {"male": "послал в рот", "female": "послала в рот", "emoji": "👄"},
     "хочу": {"male": "хочет обнять", "female": "хочет обнять", "emoji": "🤲"},
     "оставь": {"male": "просит оставить его", "female": "просит оставить её", "emoji": "🚪"},
-    "особенный": {"male": "сказал, что он особенный", "female": "сказала, что он особенный", "emoji": "💎"},
+    "особенный": {"male": "сказал Цели, что он особенный", "female": "сказала Цели, что она особенная", "emoji": "💎"},
     "не беси": {"male": "просит не бесить его", "female": "просит не бесить её", "emoji": "😇"},
-    "опора": {"male": "сказал, что она его опора", "female": "сказала, что он её опора", "emoji": "🏔️"},
+    "опора": {"male": "сказал Цели, что она его опора", "female": "сказала Цели, что он её опора", "emoji": "🏔️"},
     "хватит": {"male": "сказал хватит", "female": "сказала хватит", "emoji": "⛔"},
     "не могу": {"male": "не может без", "female": "не может без", "emoji": "💔"},
     "подожди": {"male": "просит подождать", "female": "просит подождать", "emoji": "⏳"},
@@ -84,7 +84,7 @@ DEFAULT_ACTIONS = {
     "слушай": {"male": "сказал слушать", "female": "сказала слушать", "emoji": "👂"},
     "с тобой": {"male": "с", "female": "с", "emoji": "🤝"},
     "не заставляй": {"male": "просит не заставлять его", "female": "просит не заставлять её", "emoji": "🙏"},
-    "офигенный": {"male": "сказал, что он офигенный", "female": "сказала, что он офигенный", "emoji": "🤩"},
+    "офигенный": {"male": "сказал Цели, что он офигенный", "female": "сказала Цели, что она офигенная", "emoji": "🤩"},
     "устал": {"male": "устал от", "female": "устала от", "emoji": "😴"},
     "смех": {"male": "любит смех", "female": "любит смех", "emoji": "😂"},
     "не ори": {"male": "просит не орать", "female": "просит не орать", "emoji": "🔇"},
@@ -96,26 +96,26 @@ DEFAULT_ACTIONS = {
     "дай время": {"male": "просит дать время", "female": "просит дать время", "emoji": "⏰"},
     "прощу": {"male": "всё простит", "female": "всё простит", "emoji": "🕊️"},
     "завязывай": {"male": "сказал завязывать", "female": "сказала завязывать", "emoji": "✂️"},
-    "прав": {"male": "сказал, что он всегда прав", "female": "сказала, что он всегда прав", "emoji": "✅"},
+    "прав": {"male": "сказал Цели, что он всегда прав", "female": "сказала Цели, что она всегда права", "emoji": "✅"},
     "не лезь": {"male": "просит не лезть", "female": "просит не лезть", "emoji": "🚧"},
     "доверяю": {"male": "доверяет", "female": "доверяет", "emoji": "🤝"},
     "не могу так": {"male": "больше не может так с", "female": "больше не может так с", "emoji": "💔"},
     "глаза": {"male": "теряется в глазах", "female": "теряется в глазах", "emoji": "👀"},
     "выхожу": {"male": "вышел из игры с", "female": "вышла из игры с", "emoji": "🚪"},
-    "солнце": {"male": "сказал, что он как солнце", "female": "сказала, что он как солнце", "emoji": "☀️"},
+    "солнце": {"male": "сказал Цели, что она как солнце", "female": "сказала Цели, что он как солнце", "emoji": "☀️"},
     "не справлюсь": {"male": "не справляется без", "female": "не справляется без", "emoji": "😰"},
     "люблю рядом": {"male": "любит, когда рядом", "female": "любит, когда рядом", "emoji": "💕"},
     "устал всего": {"male": "устал от всего с", "female": "устала от всего с", "emoji": "😫"},
     "поверь": {"male": "просит поверить", "female": "просит поверить", "emoji": "🤞"},
     "прости": {"male": "извинился перед", "female": "извинилась перед", "emoji": "🙇"},
-    "ты прав": {"male": "сказал, что он прав", "female": "сказала, что он прав", "emoji": "👍"},
+    "ты прав": {"male": "сказал Цели, что он прав", "female": "сказала Цели, что она права", "emoji": "👍"},
     "нужен": {"male": "нужен", "female": "нужен", "emoji": "💫"},
     "теряюсь": {"male": "теряется рядом с", "female": "теряется рядом с", "emoji": "😵"},
     "знаю": {"male": "знает, что чувствует", "female": "знает, что чувствует", "emoji": "🧠"},
     "думаю": {"male": "думает о", "female": "думает о", "emoji": "💭"},
-    "справимся": {"male": "сказал, что они справятся", "female": "сказала, что они справятся", "emoji": "💪"},
+    "справимся": {"male": "сказал Цели, что они справятся", "female": "сказала Цели, что они справятся", "emoji": "💪"},
     "хочу рядом": {"male": "хочет быть рядом с", "female": "хочет быть рядом с", "emoji": "🏠"},
-    "получится": {"male": "сказал, что у него всё получится", "female": "сказала, что у него всё получится", "emoji": "🎯"},
+    "получится": {"male": "сказал Цели, что у неё всё получится", "female": "сказала Цели, что у него всё получится", "emoji": "🎯"},
     "спокойно": {"male": "спокойно с", "female": "спокойно с", "emoji": "😌"},
     "уверена": {"male": "уверен в", "female": "уверена в", "emoji": "✨"},
     "взять за руку": {"male": "взял за руку", "female": "взяла за руку", "emoji": "🤝"},
@@ -441,7 +441,7 @@ def normalize_username_placeholders(text):
     text = re.sub(r'(?i)Username2', 'Username2', text)
     return text
 
-# ===== ИНЛАЙН-РЕЖИМ =====
+# ===== ИНЛАЙН-РЕЖИМ (старая логика, без Правила №1) =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.inline_query.query.strip()
     user_id = update.effective_user.id
@@ -506,97 +506,49 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             action = query_text
 
-    # ===== НОВАЯ ЛОГИКА: ИЩЕМ ВСЕ @username =====
-    words = query_text.split()
-    
-    # Собираем все упоминания (@username)
-    mentions = []
-    action_words = []
-    
-    for word in words:
-        if word.startswith("@"):
-            mentions.append(word[1:])  # убираем @
-        else:
-            action_words.append(word)
-    
-    # Если есть упоминания
-    if mentions:
-        # Если одно упоминание — это цель
-        if len(mentions) == 1:
-            target_input = mentions[0]
-        # Если несколько — склеиваем через "и"
-        else:
-            # Получаем имена целей
-            target_names = []
-            for username in mentions:
-                name = get_user_display_name(username)
-                if name == username:
-                    try:
-                        chat = await context.bot.get_chat(f"@{username}")
-                        if chat and chat.first_name:
-                            name = chat.first_name
-                    except Exception:
-                        pass
-                target_names.append(name)
-            
-            # Соединяем через " и "
-            if len(target_names) == 2:
-                target_input = f"{target_names[0]} и {target_names[1]}"
-            else:
-                target_input = ", ".join(target_names[:-1]) + f" и {target_names[-1]}"
-        
-        # Действие — это всё, что было до первого @ (или всё, что не @)
-        action = " ".join(action_words).strip()
-        if not action:
-            # Если действие не указано явно, пробуем найти первое слово из action_words
-            if action_words:
-                action = action_words[0]
-            else:
-                action = "скучаю"  # дефолт
-        
-        # Проверяем, есть ли такое действие в DEFAULT_ACTIONS или кастомных
+    if not target_input:
+        words = query_text.split(" ")
+        for i, w in enumerate(words):
+            if w.startswith("@"):
+                target_input = w[1:]
+                action = " ".join(words[:i]).strip()
+                if not action and i > 0:
+                    action = " ".join(words[:i])
+                break
+
+    if not target_input:
         action_lower = action.lower()
-        if action_lower not in DEFAULT_ACTIONS:
-            custom_actions = get_custom_actions(user_id)
-            found = False
-            for c in custom_actions:
-                if c[1].lower() == action_lower:
-                    found = True
-                    break
-            if not found:
-                # Если действия нет — предлагаем автодополнение
-                all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom_actions]
-                matched = [a for a in all_actions if a.lower().startswith(action_lower)]
-                if matched:
-                    action = matched[0]  # берём первое совпадение
-                else:
-                    await update.inline_query.answer([
-                        InlineQueryResultArticle(
-                            id="notfound",
-                            title="🤖 Такого действия нет!",
-                            description=f"Попробуйте: скучаю, люблю, обнимаю...",
-                            input_message_content=InputTextMessageContent(
-                                f"🤖 Действия «{action}» нет.\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
-                            )
-                        )
-                    ], cache_time=60)
-                    return
-    else:
-        # Если нет ни одного @
-        await update.inline_query.answer([
-            InlineQueryResultArticle(
-                id="no_target",
-                title="🤖 Укажите цель",
-                description="Напишите: @dot_bbot скучаю @username",
+        all_actions = list(DEFAULT_ACTIONS.keys()) + [c[1] for c in custom]
+        matched = [a for a in all_actions if a.lower().startswith(action_lower)]
+        matched = list(dict.fromkeys(matched))
+        results = []
+        for act in matched[:5]:
+            emoji = ""
+            if act in DEFAULT_ACTIONS:
+                emoji = DEFAULT_ACTIONS[act]["emoji"]
+            else:
+                for c in custom:
+                    if c[1] == act:
+                        emoji = c[4] or ""
+                        break
+            results.append(InlineQueryResultArticle(
+                id=act,
+                title=f"{emoji} {act.capitalize()}",
+                description=f"{act} @username",
+                input_message_content=InputTextMessageContent(f"{act} @username")
+            ))
+        if not results:
+            results = [InlineQueryResultArticle(
+                id="notfound",
+                title="🤖 Ничего не найдено",
+                description="Попробуйте: скучаю, люблю, обнимаю...",
                 input_message_content=InputTextMessageContent(
-                    "🤖 **Укажите цель**\n\nНапишите:\n`@dot_bbot скучаю @username`",
-                    parse_mode="Markdown"
+                    "🤖 Такого действия нет!\n\nДоступные: " + ", ".join(list(DEFAULT_ACTIONS.keys())[:10])
                 )
-            )
-        ], cache_time=60)
+            )]
+        await update.inline_query.answer(results, cache_time=60)
         return
 
-    # ===== ПОЛУЧАЕМ ИНФОРМАЦИЮ О ТОМ, КТО ПИШЕТ =====
     sender_gender = "male"
     sender_name = "Пользователь"
     user = get_user(user_id)
@@ -616,20 +568,14 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], cache_time=60)
         return
 
-    # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
-    # Если цель — это уже скомбинированная строка (несколько имён через "и")
-    # то не пытаемся её получить через get_chat
-    if " и " in target_input:
-        target_display_name = target_input
-    else:
-        target_display_name = get_user_display_name(target_input)
-        if target_display_name == target_input:
-            try:
-                chat = await context.bot.get_chat(f"@{target_input}")
-                if chat and chat.first_name:
-                    target_display_name = chat.first_name
-            except Exception:
-                pass
+    target_display_name = get_user_display_name(target_input)
+    if target_display_name == target_input:
+        try:
+            chat = await context.bot.get_chat(f"@{target_input}")
+            if chat and chat.first_name:
+                target_display_name = chat.first_name
+        except Exception:
+            pass
 
     sender_name_f = _format_name(sender_name)
     target_name_f = _format_name(target_display_name)
