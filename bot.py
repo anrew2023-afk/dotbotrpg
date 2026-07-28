@@ -1700,8 +1700,9 @@ async def main():
     print("✅ Бот готов к работе!")
     print("=" * 50)
 
-    # Запуск через run_polling (стандартный способ)
-    await app.run_polling()
+    # Запуск через updater для совместимости
+    await app.updater.start_polling()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
