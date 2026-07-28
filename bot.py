@@ -514,7 +514,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if response:
         log_action(user_id, action_found, target_display_name)
-        # Очищаем HTML-теги для описания
         clean_description = response
         clean_description = clean_description.replace("<b>", "").replace("</b>", "")
         clean_description = clean_description.replace("<u>", "").replace("</u>", "")
@@ -1711,12 +1710,8 @@ async def main():
     print("✅ Бот готов к работе!")
     print("=" * 50)
 
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-
-    while True:
-        await asyncio.sleep(1)
+    # Правильный запуск бота
+    await app.run_polling()
 
 if __name__ == "__main__":
     asyncio.run(main())
