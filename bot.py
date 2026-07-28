@@ -317,10 +317,16 @@ def get_user_by_id(user_id):
     conn.close()
     return result
 
+def get_user_id_by_username(username):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM user_names WHERE username = ?", (username,))
+    result = c.fetchone()
+    conn.close()
+    return result[0] if result else None
+
 # ===== УТИЛИТЫ =====
-def _format_name(name, user_id=None):
-    if user_id:
-        return f'<a href="tg://user?id={user_id}"><b><u>{name}</u></b></a>'
+def _format_name(name):
     return f"<b><u>{name}</u></b>"
 
 def _build_menu_text(title, lines):
@@ -334,14 +340,6 @@ def normalize_username_placeholders(text):
     text = re.sub(r'(?i)Username1', 'Username1', text)
     text = re.sub(r'(?i)Username2', 'Username2', text)
     return text
-
-def get_user_id_by_username(username):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM user_names WHERE username = ?", (username,))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else None
 
 # ===== ИНЛАЙН-РЕЖИМ =====
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -472,19 +470,17 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ===== ПОЛУЧАЕМ ИМЯ ЦЕЛИ =====
     target_display_name = get_user_display_name(target_input)
-    target_user_id = get_user_id_by_username(target_input)
     
     if target_display_name == target_input:
         try:
             chat = await context.bot.get_chat(f"@{target_input}")
             if chat and chat.first_name:
                 target_display_name = chat.first_name
-                target_user_id = chat.id
         except Exception:
             pass
 
-    sender_name_f = _format_name(sender_name, user_id)
-    target_name_f = _format_name(target_display_name, target_user_id)
+    sender_name_f = _format_name(sender_name)
+    target_name_f = _format_name(target_display_name)
 
     response = None
     action_found = None
@@ -518,11 +514,17 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if response:
         log_action(user_id, action_found, target_display_name)
+        # Очищаем HTML-теги для описания
+        clean_description = response
+        clean_description = clean_description.replace("<b>", "").replace("</b>", "")
+        clean_description = clean_description.replace("<u>", "").replace("</u>", "")
+        clean_description = clean_description.replace("|", "").strip()
+        
         await update.inline_query.answer([
             InlineQueryResultArticle(
                 id=action_found,
                 title=f"{action_found.capitalize()} → {target_display_name}",
-                description=response.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "").replace('<a href="', '').replace('"', '').replace('tg://user?id=', '').replace('>', '').replace('</a>', ''),
+                description=clean_description[:100],
                 input_message_content=InputTextMessageContent(response, parse_mode="HTML")
             )
         ], cache_time=0)
