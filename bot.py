@@ -47,6 +47,7 @@ def start_health_server():
     server.serve_forever()
 
 # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ (150 шт.) =====
+# ВСЕ формы привязаны к sender (кто пишет). Падежи target исправлены.
 DEFAULT_ACTIONS = {
     "скучаю": {"male": "скучает по {target}", "female": "скучает по {target}", "emoji": "💭"},
     "заебал": {"male": "заебал {target}", "female": "заебала {target}", "emoji": "😤"},
@@ -54,7 +55,7 @@ DEFAULT_ACTIONS = {
     "отвали": {"male": "отвалил от {target}", "female": "отвалила от {target}", "emoji": "👋"},
     "люблю": {"male": "любит {target}", "female": "любит {target}", "emoji": "❤️"},
     "нахуй": {"male": "послал нахуй {target}", "female": "послала нахуй {target}", "emoji": "🖕"},
-    "лучший": {"male": "сказал, что {target} лучший", "female": "сказала, что {target} лучший", "emoji": "⭐"},
+    "лучший": {"male": "назвал {target} лучшим", "female": "назвала {target} лучшим", "emoji": "⭐"},
     "бесишь": {"male": "бесится на {target}", "female": "бесится на {target}", "emoji": "😡"},
     "рядом": {"male": "рядом с {target}", "female": "рядом с {target}", "emoji": "👥"},
     "надоел": {"male": "надоел {target}", "female": "надоел {target}", "emoji": "😩"},
@@ -62,17 +63,17 @@ DEFAULT_ACTIONS = {
     "заткнись": {"male": "заткнул {target}", "female": "заткнула {target}", "emoji": "🤫"},
     "целую": {"male": "целует {target}", "female": "целует {target}", "emoji": "💋"},
     "пошёл": {"male": "послал нахуй {target}", "female": "послала нахуй {target}", "emoji": "🚫"},
-    "классный": {"male": "сказал, что {target} классный", "female": "сказала, что {target} классная", "emoji": "👍"},
+    "классный": {"male": "назвал {target} классным", "female": "назвала {target} классным", "emoji": "👍"},
     "задолбал": {"male": "задолбал {target}", "female": "задолбала {target}", "emoji": "💢"},
-    "крутой": {"male": "сказал, что {target} крутой", "female": "сказала, что {target} крутая", "emoji": "🔥"},
+    "крутой": {"male": "назвал {target} крутым", "female": "назвала {target} крутым", "emoji": "🔥"},
     "отъебись": {"male": "отъебался от {target}", "female": "отъебалась от {target}", "emoji": "✋"},
-    "милый": {"male": "сказал, что {target} милый", "female": "сказала, что {target} милая", "emoji": "🥰"},
+    "милый": {"male": "назвал {target} милым", "female": "назвала {target} милым", "emoji": "🥰"},
     "завали": {"male": "сказал {target} завалить", "female": "сказала {target} завалить", "emoji": "💀"},
     "соскучился": {"male": "соскучился по {target}", "female": "соскучилась по {target}", "emoji": "😢"},
     "в рот": {"male": "послал в рот {target}", "female": "послала в рот {target}", "emoji": "👄"},
     "хочу": {"male": "хочет обнять {target}", "female": "хочет обнять {target}", "emoji": "🤲"},
     "оставь": {"male": "просит оставить его", "female": "просит оставить её", "emoji": "🚪"},
-    "особенный": {"male": "сказал, что {target} особенный", "female": "сказала, что {target} особенная", "emoji": "💎"},
+    "особенный": {"male": "назвал {target} особенным", "female": "назвала {target} особенным", "emoji": "💎"},
     "не беси": {"male": "просит {target} не бесить его", "female": "просит {target} не бесить её", "emoji": "😇"},
     "опора": {"male": "сказал, что {target} его опора", "female": "сказала, что {target} её опора", "emoji": "🏔️"},
     "хватит": {"male": "сказал {target} хватит", "female": "сказала {target} хватит", "emoji": "⛔"},
@@ -84,7 +85,7 @@ DEFAULT_ACTIONS = {
     "слушай": {"male": "сказал {target} слушать", "female": "сказала {target} слушать", "emoji": "👂"},
     "с тобой": {"male": "с {target}", "female": "с {target}", "emoji": "🤝"},
     "не заставляй": {"male": "просит {target} не заставлять его", "female": "просит {target} не заставлять её", "emoji": "🙏"},
-    "офигенный": {"male": "сказал, что {target} офигенный", "female": "сказала, что {target} офигенная", "emoji": "🤩"},
+    "офигенный": {"male": "назвал {target} офигенным", "female": "назвала {target} офигенным", "emoji": "🤩"},
     "устал": {"male": "устал от {target}", "female": "устала от {target}", "emoji": "😴"},
     "смех": {"male": "любит смех {target}", "female": "любит смех {target}", "emoji": "😂"},
     "не ори": {"male": "просит {target} не орать", "female": "просит {target} не орать", "emoji": "🔇"},
@@ -102,7 +103,7 @@ DEFAULT_ACTIONS = {
     "не могу так": {"male": "больше не может так с {target}", "female": "больше не может так с {target}", "emoji": "💔"},
     "глаза": {"male": "теряется в глазах {target}", "female": "теряется в глазах {target}", "emoji": "👀"},
     "выхожу": {"male": "вышел из игры с {target}", "female": "вышла из игры с {target}", "emoji": "🚪"},
-    "солнце": {"male": "сказал, что {target} его солнце", "female": "сказала, что {target} её солнце", "emoji": "☀️"},
+    "солнце": {"male": "назвал {target} своим солнцем", "female": "назвала {target} своим солнцем", "emoji": "☀️"},
     "не справлюсь": {"male": "не справляется без {target}", "female": "не справляется без {target}", "emoji": "😰"},
     "люблю рядом": {"male": "любит, когда {target} рядом", "female": "любит, когда {target} рядом", "emoji": "💕"},
     "устал всего": {"male": "устал от всего с {target}", "female": "устала от всего с {target}", "emoji": "😫"},
@@ -193,7 +194,7 @@ DEFAULT_ACTIONS = {
     "спрятаться": {"male": "спрятался за спиной {target}", "female": "спряталась за спиной {target}", "emoji": "🫣"},
     "встать на защиту": {"male": "встал на защиту {target}", "female": "встала на защиту {target}", "emoji": "🦸"},
     "поклясться": {"male": "поклялся в верности {target}", "female": "поклялась в верности {target}", "emoji": "🫡"},
-    "назначить лучшим другом": {"male": "назначил лучшим другом {target}", "female": "назначила лучшим другом {target}", "emoji": "⭐️"},
+    "назначить лучшим другом": {"male": "назначил {target} лучшим другом", "female": "назначила {target} лучшим другом", "emoji": "⭐️"},
     "усыновить": {"male": "усыновил {target}", "female": "усыновила {target}", "emoji": "👨‍👩‍👧"},
     "заревновать": {"male": "заревновал {target}", "female": "заревновала {target}", "emoji": "😒"},
     "поднять настроение": {"male": "поднял настроение {target}", "female": "подняла настроение {target}", "emoji": "🌞"},
@@ -584,7 +585,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action_found = None
     emoji = ""
 
-    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ (работают с Username1 и Username2) =====
+    # ===== КАСТОМНЫЕ ДЕЙСТВИЯ =====
     for c in custom:
         if c[1].lower() == action.lower():
             action_found = c[1]
@@ -600,13 +601,12 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             break
 
-    # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ (работают с {target}) =====
+    # ===== ВСТРОЕННЫЕ ДЕЙСТВИЯ =====
     if not response and action.lower() in DEFAULT_ACTIONS:
         action_found = action.lower()
         data = DEFAULT_ACTIONS[action_found]
         verb = data["male"] if sender_gender == "male" else data["female"]
         emoji = data["emoji"]
-        # Подставляем имя цели вместо {target}
         verb = verb.replace("{target}", target_name_f)
         response = f"{emoji} | {sender_name_f} <b>{verb}</b>"
 
